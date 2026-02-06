@@ -152,3 +152,4 @@ cython_debug/
 Results/
 storage/
 .claude
+youtube_analysis.db

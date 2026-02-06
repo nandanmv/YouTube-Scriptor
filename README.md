@@ -9,6 +9,9 @@ The platform now offers **two ways to use it**:
 1. **CLI** (Original) - Terminal commands for local analysis
 2. **REST API** (New) - HTTP endpoints for integrations, webhooks, async processing
 
+> [!WARNING]
+> **Security Note**: The API server is designed for local use. It has no authentication by default and uses open CORS settings (`allow_origins=["*"]`). **Do not expose the API server to the public internet** without implementing proper authentication and restricting CORS.
+
 Both methods work independently and can be used together!
 
 ---
