@@ -1,0 +1,23 @@
+# Core dependencies
+yt-dlp
+rich
+litellm
+python-dotenv
+requests>=2.31.0
+
+# Phase 1: API Layer + Structured State
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+
+# Phase 2: Event-Driven Architecture (optional)
+# redis
+
+# Phase 3: Script Generation
+# youtube-transcript-api
+
+# Development and Testing
+# pytest
+# pytest-asyncio
+# pytest-cov

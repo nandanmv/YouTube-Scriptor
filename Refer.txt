@@ -1,0 +1,124 @@
+
+
+Always start with CTA, what I want from the video. Then use topics, outliers to make a video that help with that CTA. 
+
+                                                                                                                                                                                              
+
+# Single-term search for outliers with AI insights (guarantees min 10 outliers)
+python3.10 main.py outlier "claude code"
+
+# Multi-term search (calls OutlierAgent for each term, produces collated report)
+python3.10 main.py discovery "claude code, cursor ai"
+
+#Open the generated report in results/outliers/ and change [ ] to [x] for the videos you like.
+#Run the angles command abbelowove. It will synthesize patterns and angles only from the videos marked.
+python3.10 main.py theme "moltbot"
+and/or for differentangles:
+python3.10 main.py angles "moltbot"
+
+# Create script using selected outliers for angle generation (full workflow)
+python3.10 main.py create "your topic" --notes "your rough notes"
+
+# Quick script generation with checklist-driven quality control (bypasses outlier/research phases)
+python3.10 main.py quick-script "your topic" --notes "your detailed notes or outline"
+
+# Quick script with custom parameters
+python3.10 main.py quick-script "your topic" --notes "your notes" --duration 8 --reading-level "8th grade" --audience "students"
+
+
+
+  # Run outlier analysis (guarantees 10+ outliers)                                                                                                                                         
+  python3.10 main.py outlier "your topic"                                                                                                                                                  
+                                                                                                                                                                                           
+  # Open results/*.md and:                                                                                                                                                                 
+  # - Mark videos with [x] in Selection column for angle generation                                                                                                                                                                                                                                                  
+                                                                                                                                                                                           
+  For Script Creation:                                                                                                                                                                     
+                                                                                                                                                                                           
+  # Prerequisites: Run outlier analysis and mark videos first                                                                                                                              
+  python3.10 main.py create "your topic" --notes "your notes"    
+
+  Quick Script Command                                                                                                                                                                                     
+                                                                                                                                                                                                               
+  Usage:                                                                                                                                                                                                       
+  python3.10 main.py quick-script "your topic" --notes "your detailed notes or outline"                                                                                                                        
+                                                                                         
+
+
+**User Flow:**
+1. Run outlier analysis
+2. Mark videos in results/*.md file
+3. Select angle from 5-7 options
+4. Select 3-8 subtopics from 8-10 options
+5. Select hook from 5 options
+6. Select trailer from 3 options
+7. Script generated automatically
+8. Quality check performed
+9. Teleprompter format created
+
+
+
+
+python3.10 main.py create 
+
+python3.10 main.py quick-script "Claude code"  --notes "• Hook / Book Trailer Style Opening
+• Big vision, AI coding is being rewritten
+• Claude Code as the post ChatGPT moment
+• From tools to teammates, from apps to intent
+
+• Body
+• What Claude Code Really Is
+• First truly usable generic AI agent
+• No frameworks, no orchestration code
+• Anyone can use it, not just developers
+
+• Why This Is a Paradigm Shift
+• From chat based AI to action based AI
+• Memory, planning, and tools working together
+• Code as the execution layer for everything
+
+• From Apps to an AI Operating System
+• Old world, OS plus apps plus manual inputs
+• New world, give intent and data, agent builds the solution
+• No app switching, no rigid templates, no vendor lock in
+
+• Beyond Coding, Real Business Use Cases
+• Reports, presentations, file organization
+• Automations created on the fly
+• Business users empowered without technical barriers
+
+• How Claude Code Works at a High Level
+• Context from folders and files
+• Persistent project memory via init
+• Collaborative planning with human in the loop
+• Execution through code and tools
+
+• Getting Started Fast
+• One command install
+• Open a folder, launch Claude
+• Talk in plain English
+• Review plan, approve, execute
+
+• Free and Paid Paths
+• Claude Pro for serious work
+• Free alternatives to get started
+• Learn the workflow before scaling up
+
+• Risks and Guardrails
+• Early stage technology
+• Review plans carefully
+• Start with limited permissions
+• Use safe environments and backups
+
+• Outro
+• This is the beginning of the AI OS era
+• Work shifts from operating software to directing intelligence
+• Early adopters gain leverage, insight, and speed
+
+• Call to Action
+• Try Claude Code or a free alternative today
+• Comment with questions or use cases
+• Subscribe for deeper agent workflows and guardrails
+• Reach out if you want to bring agentic AI into your team or business"
+
+

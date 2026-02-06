@@ -1,0 +1,49 @@
+{
+  "version": "1.1",
+  "categories": {
+    "Hook": [
+      "Grabs attention in 3-5 seconds",
+      "Creates curiosity gap",
+      "Relevant to topic"
+    ],
+    "Structure": [
+      "Clear flow",
+      "Smooth section transitions",
+      "Curiosity gaps placed strategically",
+      "Payoffs delivered",
+      "Strong conclusion"
+    ],
+    "Content": [
+      "Factually accurate",
+      "Fact-checked with research",
+      "Easy to understand",
+      "Value-dense",
+      "No fluff",
+      "No repetitions"
+    ],
+    "Engagement": [
+      "Pattern interrupts every 60 seconds",
+      "Open loops resolved",
+      "Maintains energy",
+      "Optimized for retention",
+      "Social proof elements"
+    ],
+    "Production": [
+      "B-roll suggestions clear",
+      "SFX appropriate",
+      "Pacing varies"
+    ],
+    "CTA": [
+      "Clear call-to-action",
+      "Natural placement",
+      "Compelling reason"
+    ]
+  },
+  "performance_factors": {
+    "hook_strength": 30,
+    "content_quality": 25,
+    "structure": 20,
+    "engagement_devices": 15,
+    "production_value": 10
+  }
+}
