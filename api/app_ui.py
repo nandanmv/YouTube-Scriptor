@@ -74,6 +74,10 @@ def render_app_ui() -> str:
       box-shadow: none;
     }
 
+    .button-link.logout {
+      cursor: pointer;
+    }
+
     .nav {
       display: flex;
       flex-wrap: wrap;
@@ -556,6 +560,7 @@ def render_app_ui() -> str:
         <a class="button-link secondary" href="/docs">API Docs</a>
         <a class="button-link secondary" href="/api">Raw API Index</a>
         <a class="button-link secondary" href="/home">Overview</a>
+        <button class="button-link secondary logout" id="logout-button" type="button">Logout</button>
       </div>
     </section>
   </main>
@@ -587,6 +592,14 @@ def render_app_ui() -> str:
       return state.latestOutliers.filter((item) => state.selectedUrls.has(item.url));
     }
 
+    async function logout() {
+      try {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+      } finally {
+        window.location.href = "/login";
+      }
+    }
+
     function syncTopicFields(topic) {
       for (const id of ["theme-topic", "angles-topic", "create-topic"]) {
         const input = document.getElementById(id);
@@ -604,6 +617,10 @@ def render_app_ui() -> str:
           body: JSON.stringify(payload),
           signal: controller.signal
         });
+        if (response.status === 401) {
+          window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname + window.location.search);
+          throw new Error("Authentication required");
+        }
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.detail || data.error || "Request failed");
@@ -619,6 +636,10 @@ def render_app_ui() -> str:
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(url, { signal: controller.signal });
+        if (response.status === 401) {
+          window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname + window.location.search);
+          throw new Error("Authentication required");
+        }
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.detail || data.error || "Request failed");
@@ -987,6 +1008,7 @@ def render_app_ui() -> str:
       }
     });
 
+    document.getElementById("logout-button").addEventListener("click", logout);
   </script>
 </body>
 </html>

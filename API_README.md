@@ -590,8 +590,22 @@ OUTLIER_THRESHOLD = 5.0     # Minimum ratio (5x)
 
 1. **CORS:** Configure `allow_origins` in `api/server.py`
 2. **HTTPS:** Use reverse proxy (Nginx, Caddy)
-3. **Authentication:** Add API key middleware
-4. **Rate Limiting:** Prevent abuse
+3. **Authentication:** Configure `APP_LOGIN_PASSWORD` and `APP_SESSION_SECRET` for the browser app login
+4. **Secrets:** Keep API keys and login secrets in server env vars only, never in git
+5. **Rate Limiting:** Prevent abuse
+
+### Minimal Auth Setup
+
+```bash
+APP_LOGIN_PASSWORD=change-this
+APP_SESSION_SECRET=use-a-long-random-secret
+APP_COOKIE_SECURE=true
+```
+
+Notes:
+- `/login` is the public entry point
+- Browser pages and API routes require an authenticated session
+- Keep the repo public-safe by committing only `.env.template`, never `.env.production` or real keys
 
 ### Example Nginx Config
 

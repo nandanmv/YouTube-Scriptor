@@ -10,7 +10,7 @@ The platform now offers **two ways to use it**:
 2. **REST API** (New) - HTTP endpoints for integrations, webhooks, async processing
 
 > [!WARNING]
-> **Security Note**: The API server is designed for local use. It has no authentication by default and uses open CORS settings (`allow_origins=["*"]`). **Do not expose the API server to the public internet** without implementing proper authentication and restricting CORS.
+> **Security Note**: The web app now supports a shared-password login via `APP_LOGIN_PASSWORD` and `APP_SESSION_SECRET`, but the API still uses open CORS settings (`allow_origins=["*"]`). If you deploy publicly, keep secrets in server environment variables only, run behind HTTPS, and restrict CORS for your domain.
 
 Both methods work independently and can be used together!
 
@@ -77,6 +77,19 @@ python3.10 main.py serve --port 8001
 
 # Access API documentation at: http://localhost:8000/docs
 ```
+
+**Protect the web app before public deployment:**
+```bash
+# Put these in your server environment or .env file on the server
+APP_LOGIN_PASSWORD=change-this
+APP_SESSION_SECRET=use-a-long-random-secret
+APP_COOKIE_SECURE=true
+```
+
+Then open:
+- `http://localhost:8000/login`
+- `http://localhost:8000/`
+- `http://localhost:8000/docs`
 
 **Create a search job via API:**
 ```bash

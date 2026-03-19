@@ -5,11 +5,12 @@ Provides REST API with async job processing and webhook notifications.
 Enables external integrations with Zapier, n8n, and custom applications.
 """
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
+from fastapi.responses import RedirectResponse
 from typing import Optional, List
 import uuid
 from datetime import datetime
@@ -19,6 +20,10 @@ from functools import partial
 import sys
 import os
 import threading
+import hashlib
+import hmac
+import time
+from urllib.parse import quote
 from rich.console import Console
 
 # Add parent directory to path to import agents
@@ -50,6 +55,14 @@ from agents.quick_script_agent import QuickScriptAgent
 from api.home_ui import render_home_app
 from api.outliers_ui import render_outliers_app
 from api.app_ui import render_app_ui
+from api.login_ui import render_login_ui
+from config import (
+    APP_COOKIE_NAME,
+    APP_COOKIE_SECURE,
+    APP_LOGIN_PASSWORD,
+    APP_SESSION_SECRET,
+    APP_SESSION_TTL_HOURS,
+)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -74,9 +87,96 @@ app_outlier_jobs = {}
 app_outlier_jobs_lock = threading.Lock()
 app_discovery_jobs = {}
 app_discovery_jobs_lock = threading.Lock()
+PUBLIC_PATHS = {"/health", "/favicon.ico", "/login", "/api/v1/auth/login", "/api/v1/auth/logout"}
+HTML_PATHS = {"/", "/app", "/home", "/outliers", "/compare", "/docs"}
 
 
 # ==================== Helper Functions ====================
+
+def _auth_configured() -> bool:
+    return bool(APP_LOGIN_PASSWORD and APP_SESSION_SECRET)
+
+
+def _password_fingerprint() -> str:
+    return hashlib.sha256(APP_LOGIN_PASSWORD.encode("utf-8")).hexdigest()
+
+
+def _sign_value(value: str) -> str:
+    return hmac.new(
+        APP_SESSION_SECRET.encode("utf-8"),
+        value.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+
+
+def _build_session_token() -> str:
+    expires_at = int(time.time()) + max(APP_SESSION_TTL_HOURS, 1) * 3600
+    payload = f"{expires_at}:{_password_fingerprint()}"
+    signature = _sign_value(payload)
+    return f"{payload}.{signature}"
+
+
+def _is_authenticated(request: Request) -> bool:
+    if not _auth_configured():
+        return False
+
+    token = request.cookies.get(APP_COOKIE_NAME)
+    if not token or "." not in token:
+        return False
+
+    payload, signature = token.rsplit(".", 1)
+    expected_signature = _sign_value(payload)
+    if not hmac.compare_digest(signature, expected_signature):
+        return False
+
+    try:
+        expires_at_raw, password_hash = payload.split(":", 1)
+        expires_at = int(expires_at_raw)
+    except ValueError:
+        return False
+
+    if expires_at < int(time.time()):
+        return False
+
+    return hmac.compare_digest(password_hash, _password_fingerprint())
+
+
+def _login_redirect(path: str, query: str = "") -> RedirectResponse:
+    next_path = path or "/"
+    if query:
+        next_path = f"{next_path}?{query}"
+    encoded_next = quote(next_path, safe="/?=&-%")
+    return RedirectResponse(url=f"/login?next={encoded_next}", status_code=303)
+
+
+def _normalize_next_path(next_path: str) -> str:
+    next_path = (next_path or "/").strip()
+    if not next_path.startswith("/") or next_path.startswith("//"):
+        return "/"
+    return next_path
+
+
+@app.middleware("http")
+async def require_app_login(request: Request, call_next):
+    """Protect the browser UI and API with a simple shared-password session."""
+    path = request.url.path
+
+    if request.method == "OPTIONS" or path in PUBLIC_PATHS:
+        return await call_next(request)
+
+    if _is_authenticated(request):
+        return await call_next(request)
+
+    if path == "/openapi.json" or path.startswith("/api/"):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentication required"}
+        )
+
+    if path in HTML_PATHS or request.headers.get("accept", "").startswith("text/html"):
+        return _login_redirect(path, request.url.query)
+
+    return JSONResponse(status_code=401, content={"detail": "Authentication required"})
 
 async def send_webhook(url: str, data: dict, retries: int = 3) -> bool:
     """
@@ -341,6 +441,58 @@ async def health_check():
 async def favicon():
     """Avoid noisy 404s for the browser favicon request."""
     return Response(status_code=204)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, next: str = "/", error: str = ""):
+    """Render the shared-password login page."""
+    next_path = _normalize_next_path(next)
+    if _is_authenticated(request):
+        return RedirectResponse(url=next_path, status_code=303)
+
+    return HTMLResponse(
+        render_login_ui(
+            next_path=next_path,
+            error=error,
+            configured=_auth_configured()
+        )
+    )
+
+
+@app.post("/api/v1/auth/login")
+async def login_action(payload: dict):
+    """Create a signed browser session cookie."""
+    if not _auth_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Login is not configured. Set APP_LOGIN_PASSWORD and APP_SESSION_SECRET."
+        )
+
+    password = str(payload.get("password", "")).strip()
+    next_path = _normalize_next_path(str(payload.get("next", "/")))
+
+    if not hmac.compare_digest(password, APP_LOGIN_PASSWORD):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+
+    response = JSONResponse({"success": True, "next": next_path})
+    response.set_cookie(
+        key=APP_COOKIE_NAME,
+        value=_build_session_token(),
+        max_age=max(APP_SESSION_TTL_HOURS, 1) * 3600,
+        httponly=True,
+        secure=APP_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/v1/auth/logout")
+async def logout_action():
+    """Clear the browser session cookie."""
+    response = JSONResponse({"success": True})
+    response.delete_cookie(key=APP_COOKIE_NAME, path="/")
+    return response
 
 
 @app.get("/outliers", response_class=HTMLResponse)

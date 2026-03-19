@@ -6,6 +6,9 @@ load_dotenv()
 # --- CONFIGURATION ---
 SEARCH_TERM = "claude code"
 SEARCH_LIMIT = 50        # How many search results to analyze
+SHORTS_SEARCH_MULTIPLIER = int(os.getenv("SHORTS_SEARCH_MULTIPLIER", "4"))  # Expand search pool for Shorts filtering
+SHORTS_MAX_DURATION_SECONDS = int(os.getenv("SHORTS_MAX_DURATION_SECONDS", "70"))
+SHORTS_APP_DEFAULT_LIMIT = int(os.getenv("SHORTS_APP_DEFAULT_LIMIT", "12"))
 
 # --- RESEARCH STRATEGY ---
 # Strategy for finding videos to analyze: "top_performers" or "outliers"
@@ -56,3 +59,10 @@ MAX_SCRIPT_DURATION = int(os.getenv("MAX_SCRIPT_DURATION", "12"))  # Maximum dur
 
 # Auto Research Settings
 AUTO_RESEARCH_OUTLIER_COUNT = int(os.getenv("AUTO_RESEARCH_OUTLIER_COUNT", "10"))  # Number of top outliers to analyze automatically
+
+# Web App Authentication
+APP_LOGIN_PASSWORD = os.getenv("APP_LOGIN_PASSWORD", "").strip()
+APP_SESSION_SECRET = os.getenv("APP_SESSION_SECRET", APP_LOGIN_PASSWORD).strip()
+APP_SESSION_TTL_HOURS = int(os.getenv("APP_SESSION_TTL_HOURS", "24"))
+APP_COOKIE_SECURE = os.getenv("APP_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
+APP_COOKIE_NAME = os.getenv("APP_COOKIE_NAME", "yt_strategy_session").strip() or "yt_strategy_session"
