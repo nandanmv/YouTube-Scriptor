@@ -14,14 +14,21 @@ warnings.filterwarnings("ignore", message="Expected `Union\[Choices, StreamingCh
 class InsightAgent(BaseAgent):
     """Agent that performs deep AI analysis on a specific video."""
 
-    def __init__(self, use_database: bool = False, ai_model: str = None):
+    def __init__(self, use_database: bool = False, ai_model: str = None, progress_callback=None):
         """Initialize InsightAgent with optional database support and AI model."""
         super().__init__(use_database=use_database, ai_model=ai_model)
         self.model = ai_model or config.RESEARCH_MODEL
+        self.progress_callback = progress_callback
+
+    def _log(self, message: str):
+        if self.progress_callback:
+            self.progress_callback(message)
+        else:
+            print(message)
 
     def run(self, video_data: Dict[str, Any]) -> Dict[str, Any]:
         url = video_data.get('url')
-        print(f"[*] InsightAgent analyzing with {self.model}: {video_data.get('title')}...")
+        self._log(f"[*] InsightAgent analyzing with {self.model}: {video_data.get('title')}...")
         
         details = YouTubeUtility.get_video_details(url)
         title = details.get('title', video_data.get('title'))
@@ -74,7 +81,7 @@ class InsightAgent(BaseAgent):
                 'subtopics_covered': analysis.get('subtopics_covered', 'N/A')
             }
         except Exception as e:
-            print(f"[!] AI Analysis failed: {e}")
+            self._log(f"[!] AI Analysis failed: {e}")
             return {
                 'title': title,
                 'url': url,

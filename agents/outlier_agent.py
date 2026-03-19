@@ -9,11 +9,25 @@ from agents.insight_agent import InsightAgent
 class OutlierAgent(BaseAgent):
     """Agent that identifies high-performing videos for a single search term."""
 
-    def __init__(self, use_database: bool = False):
+    def __init__(self, use_database: bool = False, progress_callback=None):
         """Initialize OutlierAgent with optional database support."""
         super().__init__(use_database=use_database)
+        self.progress_callback = progress_callback
 
-    def run(self, query: str, job_id: Optional[str] = None, min_outliers: int = 10) -> List[Dict[str, Any]]:
+    def _log(self, message: str):
+        if self.progress_callback:
+            self.progress_callback(message)
+        else:
+            print(message)
+
+    def run(
+        self,
+        query: str,
+        job_id: Optional[str] = None,
+        min_outliers: int = 10,
+        generate_insights: bool = True,
+        save_report: bool = True
+    ) -> List[Dict[str, Any]]:
         """
         Run outlier detection for a search query.
 
@@ -29,29 +43,29 @@ class OutlierAgent(BaseAgent):
         outliers = []
 
         # Try with initial search limit
-        print(f"[*] Analyzing {search_limit} videos for outliers matching '{query}'...")
-        results = YouTubeUtility.search(query, search_limit)
+        self._log(f"[*] Analyzing {search_limit} videos for outliers matching '{query}'...")
+        results = YouTubeUtility.search(query, search_limit, logger=self._log)
 
         for video in results:
             outlier_data = self._analyze_video(video)
             if outlier_data:
-                print(f"[+] Found Outlier: {outlier_data['title']} (Ratio: {outlier_data['ratio']:.2f})")
+                self._log(f"[+] Found Outlier: {outlier_data['title']} (Ratio: {outlier_data['ratio']:.2f})")
                 outliers.append(outlier_data)
 
         # If we found fewer than min_outliers, suggest increasing search limit
         if len(outliers) < min_outliers and search_limit < 100:
             needed_limit = min(search_limit + 20, 100)
-            print(f"\n[!] Found only {len(outliers)} outliers (target: {min_outliers})")
-            print(f"[*] Expanding search to {needed_limit} results to find more outliers...")
+            self._log(f"[!] Found only {len(outliers)} outliers (target: {min_outliers})")
+            self._log(f"[*] Expanding search to {needed_limit} results to find more outliers...")
 
             # Search additional videos
-            additional_results = YouTubeUtility.search(query, needed_limit)
+            additional_results = YouTubeUtility.search(query, needed_limit, logger=self._log)
 
             # Process only new videos (those beyond original search_limit)
             for video in additional_results[search_limit:]:
                 outlier_data = self._analyze_video(video)
                 if outlier_data:
-                    print(f"[+] Found Outlier: {outlier_data['title']} (Ratio: {outlier_data['ratio']:.2f})")
+                    self._log(f"[+] Found Outlier: {outlier_data['title']} (Ratio: {outlier_data['ratio']:.2f})")
                     outliers.append(outlier_data)
 
                 # Stop if we reached the minimum
@@ -60,25 +74,29 @@ class OutlierAgent(BaseAgent):
 
         # Display final count
         if len(outliers) < min_outliers:
-            print(f"\n[!] Warning: Found {len(outliers)} outliers (target was {min_outliers})")
-            print(f"[*] Consider adjusting OUTLIER_THRESHOLD or MIN_MEDIAN_VIEWS in config.py")
+            self._log(f"[!] Warning: Found {len(outliers)} outliers (target was {min_outliers})")
+            self._log("[*] Consider adjusting OUTLIER_THRESHOLD or MIN_MEDIAN_VIEWS in config.py")
         else:
-            print(f"\n[+] Successfully found {len(outliers)} outliers (target: {min_outliers})")
+            self._log(f"[+] Successfully found {len(outliers)} outliers (target: {min_outliers})")
 
         sorted_outliers = sorted(outliers, key=lambda x: x['ratio'], reverse=True)
 
         # Add AI insights to top N videos
-        if sorted_outliers:
-            print(f"\n[*] Generating AI insights for top {min(len(sorted_outliers), config.INSIGHT_TOP_N)} outliers...")
-            insight_agent = InsightAgent(use_database=self.use_database)
+        if sorted_outliers and generate_insights:
+            self._log(f"[*] Generating AI insights for top {min(len(sorted_outliers), config.INSIGHT_TOP_N)} outliers...")
+            insight_agent = InsightAgent(use_database=self.use_database, progress_callback=self.progress_callback)
 
             for i, outlier in enumerate(sorted_outliers[:config.INSIGHT_TOP_N]):
-                print(f"[*] Analyzing {i+1}/{min(len(sorted_outliers), config.INSIGHT_TOP_N)}: {outlier['title']}")
+                self._log(f"[*] Analyzing {i+1}/{min(len(sorted_outliers), config.INSIGHT_TOP_N)}: {outlier['title']}")
                 insight = insight_agent.run(outlier)
                 # Merge insights into outlier dict
                 outlier.update(insight)
 
-            self._save_rich_results(query, sorted_outliers, job_id=job_id)
+        if sorted_outliers and save_report:
+            if generate_insights:
+                self._save_rich_results(query, sorted_outliers, job_id=job_id)
+            else:
+                self.save_results(query, sorted_outliers, job_id=job_id)
 
         return sorted_outliers
 
@@ -164,7 +182,7 @@ class OutlierAgent(BaseAgent):
 
                 f.write(f"| [ ] | {r['ratio']:.2f}x | [{r['title']}]({r['url']}) | {r['views']:,} | {int(r['median_views']):,} | {subs} | {r['channel']} | {success} | {subtopics} | {insights} | {titles} | {hooks} |\n")
 
-        print(f"[bold green][+] Outlier analysis saved to: {filename}[/bold green]")
+        self._log(f"[+] Outlier analysis saved to: {filename}")
 
         # Save to database if enabled
         if self.use_database and job_id:

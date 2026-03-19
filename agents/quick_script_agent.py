@@ -28,7 +28,8 @@ class QuickScriptAgent(BaseAgent):
             self.checklist = json.load(f)
 
     def run(self, topic: str, notes: str = "", duration: int = 11,
-            reading_level: Optional[str] = None, audience: Optional[str] = None) -> Optional[dict]:
+            reading_level: Optional[str] = None, audience: Optional[str] = None,
+            interactive: bool = True) -> Optional[dict]:
         """
         Generate script using checklist-driven approach with iteration support.
 
@@ -48,6 +49,35 @@ class QuickScriptAgent(BaseAgent):
 
         self.console.print(f"\n[bold cyan]⚡ Quick Script Generation for: {topic}[/bold cyan]\n")
         self.console.print(f"[yellow]Duration: {duration} min | Reading Level: {reading_level} | Audience: {audience}[/yellow]\n")
+
+        # Non-interactive web/API mode: generate once, score once, save
+        if not interactive:
+            script = self._generate_script_with_checklist(
+                topic=topic,
+                notes=notes,
+                duration=duration,
+                reading_level=reading_level,
+                audience=audience
+            )
+            scores = self._score_script_with_checklist(script, topic)
+
+            self.console.print("\n[yellow]Formatting for Elgato teleprompter...[/yellow]")
+            formatter = TeleprompterFormatter(use_database=self.use_database)
+            teleprompter_script = formatter.run(script)
+
+            result = {
+                "topic": topic,
+                "notes": notes,
+                "duration": duration,
+                "reading_level": reading_level,
+                "audience": audience,
+                "script": script,
+                "teleprompter_script": teleprompter_script,
+                "quality_report": scores
+            }
+
+            self._save_outputs(topic, result)
+            return result
 
         # Iteration loop
         script = None
@@ -132,7 +162,8 @@ class QuickScriptAgent(BaseAgent):
             "reading_level": reading_level,
             "audience": audience,
             "script": script,
-            "teleprompter_script": teleprompter_script
+            "teleprompter_script": teleprompter_script,
+            "quality_report": scores
         }
 
         self._save_outputs(topic, result)

@@ -14,7 +14,7 @@ class ThemeAgent(BaseAgent):
         super().__init__(use_database=use_database, ai_model=ai_model)
         self.model = ai_model or config.RESEARCH_MODEL
 
-    def run(self, topic: str) -> dict:
+    def run(self, topic: str, videos: Optional[List[Dict[str, Any]]] = None) -> dict:
         """
         Identify recurring themes by analyzing all outlier videos for a topic.
 
@@ -26,8 +26,7 @@ class ThemeAgent(BaseAgent):
         """
         print(f"[*] ThemeAgent analyzing all outliers for '{topic}'...")
 
-        # 1. Find and parse the latest outlier report for this topic
-        all_videos = self._parse_all_outliers(topic)
+        all_videos = videos if videos is not None else self._parse_all_outliers(topic)
 
         if not all_videos:
             print(f"[!] No outlier reports found for '{topic}' in results/outliers/")

@@ -30,7 +30,7 @@ class ScriptCreatorAgent(BaseAgent):
 
     def run(self, topic: str, notes: str = "", interactive: bool = True, auto_select: dict = None,
             manual_mode: bool = False, duration: int = None, top_n_outliers: int = None,
-            strategy: str = None) -> dict:
+            strategy: str = None, seed_angles: list = None, seed_sources: list = None) -> dict:
         """
         Run complete script creation pipeline.
 
@@ -66,7 +66,11 @@ class ScriptCreatorAgent(BaseAgent):
         # 1. Generate angles and discover sources
         youtube_sources = []  # Will hold YouTube video sources for citation
 
-        if manual_mode:
+        if seed_angles:
+            self.console.print("[yellow]Step 1/7: Using provided angles from web selection...[/yellow]")
+            angles = seed_angles
+            youtube_sources = seed_sources or []
+        elif manual_mode:
             # Manual workflow: Use marked outliers from markdown files
             self.console.print("[yellow]Step 1/7: Generating angles from manually selected outliers...[/yellow]")
             self.console.print("[cyan]💡 Using videos marked in results/outliers/*.md files[/cyan]")

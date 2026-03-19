@@ -190,6 +190,7 @@ def main():
 
         console.print("\n  [bold]python3.10 main.py serve --port 8000[/bold]")
         console.print("    → Start API server")
+        console.print("    [dim]Web UI: /, /outliers, /docs[/dim]")
 
         console.print("\n[bold cyan]Examples:[/bold cyan]")
         console.print("  [dim]python3.10 main.py create \"AI coding tools\"[/dim]")

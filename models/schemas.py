@@ -168,3 +168,40 @@ class WebhookPayload(BaseModel):
     results_url: Optional[str] = None
     error: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class DirectOutlierRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=200)
+    limit: int = Field(default=10, ge=1, le=30)
+    include_insights: bool = False
+
+
+class DiscoveryRequest(BaseModel):
+    terms: str = Field(..., min_length=1, max_length=500)
+
+
+class ThemeRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=200)
+    videos: Optional[List[Dict[str, Any]]] = None
+
+
+class AnglesRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=200)
+    videos: Optional[List[Dict[str, Any]]] = None
+
+
+class CreateScriptRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=200)
+    notes: str = ""
+    duration: Optional[int] = Field(default=None, ge=1, le=120)
+    top_n_outliers: Optional[int] = Field(default=None, ge=1, le=50)
+    strategy: Optional[str] = None
+    selected_videos: Optional[List[Dict[str, Any]]] = None
+
+
+class QuickScriptRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=200)
+    notes: str = Field(..., min_length=1)
+    duration: int = Field(default=11, ge=1, le=120)
+    reading_level: Optional[str] = None
+    audience: Optional[str] = None

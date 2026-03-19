@@ -13,7 +13,7 @@ class AngleFromOutliersAgent(BaseAgent):
         super().__init__(use_database=use_database, ai_model=ai_model)
         self.model = ai_model or config.ANGLE_MODEL
 
-    def run(self, topic: str) -> dict:
+    def run(self, topic: str, videos: List[Dict[str, Any]] = None) -> dict:
         """
         Find successful angles by analyzing all outlier videos for a topic.
 
@@ -25,8 +25,7 @@ class AngleFromOutliersAgent(BaseAgent):
         """
         print(f"[*] AngleFromOutliersAgent analyzing all outliers for '{topic}'...")
 
-        # 1. Read all outliers from the latest markdown report for this topic
-        all_outliers = self._parse_all_outliers(topic)
+        all_outliers = videos if videos is not None else self._parse_all_outliers(topic)
 
         if not all_outliers:
             print(f"[!] No outlier reports found for '{topic}' in results/outliers/")
