@@ -1,12 +1,23 @@
 import json
 import subprocess
 import statistics
+import sys
 from typing import List, Dict, Any, Optional
 
 import config
 
 class YouTubeUtility:
     """Utility class for all YouTube (yt-dlp) interactions."""
+
+    @staticmethod
+    def _yt_dlp_command() -> List[str]:
+        """
+        Run yt-dlp via the active Python environment.
+
+        This avoids deploy issues where the `yt-dlp` shell binary is not on PATH
+        even though the package is installed inside the current virtualenv.
+        """
+        return [sys.executable, "-m", "yt_dlp"]
 
     @staticmethod
     def _run_json_command(cmd: List[str], suppress_errors: bool = False) -> List[Dict[str, Any]]:
@@ -79,7 +90,7 @@ class YouTubeUtility:
     @staticmethod
     def _search_full_metadata(query: str, limit: int) -> List[Dict[str, Any]]:
         cmd = [
-            "yt-dlp",
+            *YouTubeUtility._yt_dlp_command(),
             f"ytsearch{limit}:{query}",
             "--dump-json",
             "--quiet"
@@ -89,7 +100,7 @@ class YouTubeUtility:
     @staticmethod
     def _search_flat(query: str, limit: int) -> List[Dict[str, Any]]:
         cmd = [
-            "yt-dlp",
+            *YouTubeUtility._yt_dlp_command(),
             f"ytsearch{limit}:{query}",
             "--dump-json",
             "--flat-playlist",
@@ -152,7 +163,7 @@ class YouTubeUtility:
         Uses --playlist-end 1 to ensure we get at least one video's metadata 
         which typically contains the channel stats."""
         cmd = [
-            "yt-dlp",
+            *YouTubeUtility._yt_dlp_command(),
             "--dump-json",
             "--playlist-end", "1",
             "--quiet",
@@ -173,7 +184,7 @@ class YouTubeUtility:
         rows: List[Dict[str, Any]] = []
         for target_url in target_urls:
             cmd = [
-                "yt-dlp",
+                *YouTubeUtility._yt_dlp_command(),
                 f"--playlist-end", str(limit),
                 "--dump-json",
                 "--flat-playlist",
@@ -197,7 +208,7 @@ class YouTubeUtility:
     def get_video_details(video_url: str) -> Dict[str, Any]:
         """Fetches full video metadata including description."""
         cmd = [
-            "yt-dlp",
+            *YouTubeUtility._yt_dlp_command(),
             "--dump-json",
             "--quiet",
             video_url
