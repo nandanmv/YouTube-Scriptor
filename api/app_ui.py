@@ -442,7 +442,7 @@ def render_app_ui() -> str:
             <input id="outlier-limit" type="number" min="1" max="20" value="10" placeholder="Limit">
           </label>
           <label class="field">
-            <span class="field-label">Max Subscribers</span>
+            <span class="field-label">Max Subscribers (Best Effort)</span>
             <input id="outlier-max-subscribers" type="number" min="0" step="1000" value="200000" placeholder="Subscriber cap">
           </label>
           <label class="checkbox-inline full"><input id="outlier-insights" type="checkbox" checked><span>Include AI insights</span></label>
@@ -682,7 +682,7 @@ def render_app_ui() -> str:
                   <div class="stats">
                     <div class="stat"><span class="stat-label">Views</span><span class="stat-value">${formatNumber(item.views)}</span></div>
                     <div class="stat"><span class="stat-label">Median</span><span class="stat-value">${formatNumber(Math.round(item.median_views || 0))}</span></div>
-                    <div class="stat"><span class="stat-label">Subscribers</span><span class="stat-value">${item.subscribers ? formatNumber(item.subscribers) : "N/A"}</span></div>
+                    <div class="stat"><span class="stat-label">Subscribers</span><span class="stat-value">${item.subscribers ? formatNumber(item.subscribers) : "Unavailable"}</span></div>
                   </div>
                 </div>
               </label>
