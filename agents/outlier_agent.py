@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 import os
+import re
 from datetime import datetime
 import config
 from youtube_utils import YouTubeUtility
@@ -26,7 +27,8 @@ class OutlierAgent(BaseAgent):
         job_id: Optional[str] = None,
         min_outliers: int = 10,
         generate_insights: bool = True,
-        save_report: bool = True
+        save_report: bool = True,
+        max_subscribers: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Run outlier detection for a search query.
@@ -41,13 +43,16 @@ class OutlierAgent(BaseAgent):
         """
         search_limit = config.SEARCH_LIMIT
         outliers = []
+        subscriber_cap = max_subscribers if max_subscribers is not None else config.MAX_SUBSCRIBERS
 
         # Try with initial search limit
         self._log(f"[*] Analyzing {search_limit} videos for outliers matching '{query}'...")
         results = YouTubeUtility.search(query, search_limit, logger=self._log)
 
         for video in results:
-            outlier_data = self._analyze_video(video)
+            if not self._is_query_relevant(video, query):
+                continue
+            outlier_data = self._analyze_video(video, subscriber_cap)
             if outlier_data:
                 self._log(f"[+] Found Outlier: {outlier_data['title']} (Ratio: {outlier_data['ratio']:.2f})")
                 outliers.append(outlier_data)
@@ -63,7 +68,9 @@ class OutlierAgent(BaseAgent):
 
             # Process only new videos (those beyond original search_limit)
             for video in additional_results[search_limit:]:
-                outlier_data = self._analyze_video(video)
+                if not self._is_query_relevant(video, query):
+                    continue
+                outlier_data = self._analyze_video(video, subscriber_cap)
                 if outlier_data:
                     self._log(f"[+] Found Outlier: {outlier_data['title']} (Ratio: {outlier_data['ratio']:.2f})")
                     outliers.append(outlier_data)
@@ -100,7 +107,44 @@ class OutlierAgent(BaseAgent):
 
         return sorted_outliers
 
-    def _analyze_video(self, video: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _normalize_text(self, value: Any) -> str:
+        return re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower()).strip()
+
+    def _looks_like_music_result(self, video: Dict[str, Any]) -> bool:
+        blob = self._normalize_text(f"{video.get('title', '')} {video.get('channel', '')}")
+        music_markers = (
+            " remix ",
+            " official audio ",
+            " official music video ",
+            " lyrics ",
+            " lyric video ",
+            " mashup ",
+            " cover ",
+            " sped up ",
+            " slowed ",
+            " dj ",
+            " album ",
+            " soundtrack ",
+            " feat ",
+        )
+        padded_blob = f" {blob} "
+        return any(marker in padded_blob for marker in music_markers)
+
+    def _is_query_relevant(self, video: Dict[str, Any], query: str) -> bool:
+        tokens = [token for token in self._normalize_text(query).split() if len(token) >= 2]
+        if not tokens:
+            return True
+
+        haystack = self._normalize_text(f"{video.get('title', '')} {video.get('channel', '')}")
+        if len(tokens) > 1:
+            return all(re.search(rf'\b{re.escape(token)}\b', haystack) for token in tokens)
+
+        token = tokens[0]
+        if token == "ai" and self._looks_like_music_result(video):
+            return False
+        return re.search(rf'\b{re.escape(token)}\b', haystack) is not None
+
+    def _analyze_video(self, video: Dict[str, Any], max_subscribers: int) -> Optional[Dict[str, Any]]:
         channel_url = video.get('channel_url')
         if not channel_url:
             channel_id = video.get('channel_id')
@@ -110,6 +154,7 @@ class OutlierAgent(BaseAgent):
                 return None
 
         video_views = video.get('view_count') or 0
+        video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
         median_views = YouTubeUtility.get_channel_baseline(channel_url, config.CHANNEL_HISTORY)
         
         ratio = video_views / median_views if median_views > 0 else 0
@@ -121,16 +166,24 @@ class OutlierAgent(BaseAgent):
             return None
         
         if ratio >= config.OUTLIER_THRESHOLD:
-            channel_info = YouTubeUtility.get_channel_info(channel_url)
-            subscribers = channel_info.get('channel_follower_count') or channel_info.get('subscriber_count')
+            subscribers = video.get('channel_follower_count') or video.get('subscriber_count')
+
+            detailed_video = {}
+            if subscribers is None:
+                detailed_video = YouTubeUtility.get_video_details(video_url)
+                subscribers = detailed_video.get('channel_follower_count') or detailed_video.get('subscriber_count')
+
+            if channel_url and subscribers is None:
+                channel_info = YouTubeUtility.get_channel_info(channel_url)
+                subscribers = channel_info.get('channel_follower_count') or channel_info.get('subscriber_count')
 
             # Filter: Only include channels with fewer than MAX_SUBSCRIBERS
-            if subscribers and subscribers >= config.MAX_SUBSCRIBERS:
+            if subscribers and subscribers >= max_subscribers:
                 return None
 
             return {
                 'title': video.get('title'),
-                'url': f"https://www.youtube.com/watch?v={video.get('id')}",
+                'url': video_url,
                 'views': video_views,
                 'median_views': median_views,
                 'ratio': ratio,

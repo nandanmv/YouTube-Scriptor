@@ -441,6 +441,10 @@ def render_app_ui() -> str:
             <span class="field-label">Minimum Outliers</span>
             <input id="outlier-limit" type="number" min="1" max="20" value="10" placeholder="Limit">
           </label>
+          <label class="field">
+            <span class="field-label">Max Subscribers</span>
+            <input id="outlier-max-subscribers" type="number" min="0" step="1000" value="200000" placeholder="Subscriber cap">
+          </label>
           <label class="checkbox-inline full"><input id="outlier-insights" type="checkbox" checked><span>Include AI insights</span></label>
           <button class="full" type="submit">Run Outlier Search</button>
         </form>
@@ -866,6 +870,7 @@ def render_app_ui() -> str:
       event.preventDefault();
       const query = document.getElementById("outlier-topic").value.trim();
       const limit = Number(document.getElementById("outlier-limit").value || 10);
+      const maxSubscribers = Number(document.getElementById("outlier-max-subscribers").value || 0);
       const includeInsights = document.getElementById("outlier-insights").checked;
       syncTopicFields(query);
       stopOutlierPolling();
@@ -873,7 +878,12 @@ def render_app_ui() -> str:
       setOutputHtml("outlier-output", renderOutlierProgress([`[*] Queuing outlier search for "${query}"...`]));
 
       try {
-        const job = await postJson("/api/v1/app/outlier/start", { query, limit, include_insights: includeInsights });
+        const job = await postJson("/api/v1/app/outlier/start", {
+          query,
+          limit,
+          include_insights: includeInsights,
+          max_subscribers: maxSubscribers > 0 ? maxSubscribers : null
+        });
         state.activeOutlierJobId = job.job_id;
         setStatus("outlier-status", `Outlier search started for "${job.query}". Showing live progress...`);
         await pollOutlierJob(job.job_id);

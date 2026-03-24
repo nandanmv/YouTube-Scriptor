@@ -325,7 +325,8 @@ async def run_app_outlier_job(job_id: str, request: DirectOutlierRequest):
             job_id=None,
             min_outliers=request.limit,
             generate_insights=request.include_insights,
-            save_report=request.include_insights
+            save_report=request.include_insights,
+            max_subscribers=request.max_subscribers
         )
         results = await loop.run_in_executor(None, runner)
         _update_app_outlier_job(
@@ -545,7 +546,8 @@ async def app_outlier_search(request: DirectOutlierRequest):
         job_id=None,
         min_outliers=request.limit,
         generate_insights=request.include_insights,
-        save_report=request.include_insights
+        save_report=request.include_insights,
+        max_subscribers=request.max_subscribers
     )
     results = await loop.run_in_executor(None, runner)
     return {

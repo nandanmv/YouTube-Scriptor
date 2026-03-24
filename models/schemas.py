@@ -174,6 +174,7 @@ class DirectOutlierRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=200)
     limit: int = Field(default=10, ge=1, le=30)
     include_insights: bool = False
+    max_subscribers: Optional[int] = Field(default=None, ge=0, le=1000000000)
 
 
 class DiscoveryRequest(BaseModel):
