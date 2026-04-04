@@ -42,6 +42,26 @@ class TrendAgent(BaseAgent):
         "AI automation": [r"\bai automation\b", r"\bai workflow(s)?\b", r"\bautomation\b"],
     }
 
+    TERM_PRIORITY = [
+        "Claude Code",
+        "MCP",
+        "Cursor",
+        "RAG",
+        "n8n",
+        "Browser automation",
+        "Coding agents",
+        "Local AI",
+        "OpenAI",
+        "Anthropic",
+        "Gemini",
+        "DeepSeek",
+        "LangChain",
+        "Vibe coding",
+        "AI agents",
+        "LLMs",
+        "AI automation",
+    ]
+
     def __init__(self, use_database: bool = False, progress_callback=None):
         super().__init__(use_database=use_database)
         self.progress_callback = progress_callback
@@ -112,6 +132,7 @@ class TrendAgent(BaseAgent):
             matched_terms = self._match_terms(video, ai_only=ai_only)
             if not matched_terms:
                 continue
+            primary_term = self._pick_primary_term(matched_terms)
 
             upload_date = self._parse_upload_date(video)
             age_days = max((datetime.now() - upload_date).days, 1) if upload_date else max(lookback_days // 2, 1)
@@ -119,6 +140,7 @@ class TrendAgent(BaseAgent):
             velocity = views / age_days
 
             sample_video = {
+                "id": video.get("id"),
                 "title": video.get("title"),
                 "url": f"https://www.youtube.com/watch?v={video.get('id')}",
                 "channel": video.get("channel"),
@@ -127,23 +149,22 @@ class TrendAgent(BaseAgent):
                 "views_per_day": round(velocity, 1),
             }
 
-            for term in matched_terms:
-                bucket = term_buckets.setdefault(term, {
-                    "term": term,
-                    "mentions": 0,
-                    "distinct_channels": set(),
-                    "total_views": 0,
-                    "total_velocity": 0.0,
-                    "recent_mentions": 0,
-                    "sample_videos": [],
-                })
-                bucket["mentions"] += 1
-                bucket["distinct_channels"].add(video.get("channel") or "Unknown channel")
-                bucket["total_views"] += views
-                bucket["total_velocity"] += velocity
-                if upload_date and upload_date >= recent_cutoff:
-                    bucket["recent_mentions"] += 1
-                bucket["sample_videos"].append(sample_video)
+            bucket = term_buckets.setdefault(primary_term, {
+                "term": primary_term,
+                "mentions": 0,
+                "distinct_channels": set(),
+                "total_views": 0,
+                "total_velocity": 0.0,
+                "recent_mentions": 0,
+                "sample_videos": [],
+            })
+            bucket["mentions"] += 1
+            bucket["distinct_channels"].add(video.get("channel") or "Unknown channel")
+            bucket["total_views"] += views
+            bucket["total_velocity"] += velocity
+            if upload_date and upload_date >= recent_cutoff:
+                bucket["recent_mentions"] += 1
+            bucket["sample_videos"].append(sample_video)
 
         if not term_buckets:
             return []
@@ -205,6 +226,13 @@ class TrendAgent(BaseAgent):
             reverse=True,
         )
         return ranked_terms[:max_terms]
+
+    def _pick_primary_term(self, matched_terms: List[str]) -> str:
+        priority_rank = {term: idx for idx, term in enumerate(self.TERM_PRIORITY)}
+        return sorted(
+            matched_terms,
+            key=lambda term: (priority_rank.get(term, len(self.TERM_PRIORITY)), term.lower())
+        )[0]
 
     def _match_terms(self, video: Dict[str, Any], ai_only: bool) -> List[str]:
         blob = self._normalize_text(f"{video.get('title', '')} {video.get('description', '')} {video.get('channel', '')}")
