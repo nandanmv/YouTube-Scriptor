@@ -39,6 +39,7 @@ from models.schemas import (
     OutlierResult,
     DirectOutlierRequest,
     DiscoveryRequest,
+    TrendRequest,
     ThemeRequest,
     AnglesRequest,
     CreateScriptRequest,
@@ -47,6 +48,7 @@ from models.schemas import (
 from storage.database import AnalysisStore
 from agents.outlier_agent import OutlierAgent
 from agents.discovery_agent import DiscoveryAgent
+from agents.trend_agent import TrendAgent
 from agents.shortlist_agent import ShortlistAgent
 from agents.theme_agent import ThemeAgent
 from agents.angle_from_outliers_agent import AngleFromOutliersAgent
@@ -87,6 +89,8 @@ app_outlier_jobs = {}
 app_outlier_jobs_lock = threading.Lock()
 app_discovery_jobs = {}
 app_discovery_jobs_lock = threading.Lock()
+app_trend_jobs = {}
+app_trend_jobs_lock = threading.Lock()
 PUBLIC_PATHS = {"/health", "/favicon.ico", "/login", "/api/v1/auth/login", "/api/v1/auth/logout"}
 HTML_PATHS = {"/", "/app", "/home", "/outliers", "/compare", "/docs"}
 
@@ -360,6 +364,22 @@ def _append_app_discovery_log(job_id: str, message: str):
         job["updated_at"] = datetime.now().isoformat()
 
 
+def _update_app_trend_job(job_id: str, **updates):
+    with app_trend_jobs_lock:
+        if job_id in app_trend_jobs:
+            app_trend_jobs[job_id].update(updates)
+            app_trend_jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+
+def _append_app_trend_log(job_id: str, message: str):
+    with app_trend_jobs_lock:
+        job = app_trend_jobs.get(job_id)
+        if not job:
+            return
+        job["logs"].append(message)
+        job["updated_at"] = datetime.now().isoformat()
+
+
 async def run_app_discovery_job(job_id: str, request: DiscoveryRequest):
     """Background task for browser discovery with progress logs."""
     try:
@@ -383,6 +403,29 @@ async def run_app_discovery_job(job_id: str, request: DiscoveryRequest):
     except Exception as exc:
         _update_app_discovery_job(job_id, status="failed", error=str(exc))
         _append_app_discovery_log(job_id, f"[!] Discovery failed: {exc}")
+
+
+async def run_app_trend_job(job_id: str, request: TrendRequest):
+    """Background task for browser trend discovery with progress logs."""
+    try:
+        seeds = [seed.strip() for seed in (request.seeds or "").split(",") if seed.strip()]
+        _append_app_trend_log(job_id, f"[*] Starting trend discovery across {len(seeds) or 'default'} seed set(s)...")
+        agent = TrendAgent(progress_callback=lambda message: _append_app_trend_log(job_id, message))
+        loop = asyncio.get_event_loop()
+        runner = partial(
+            agent.run,
+            seeds=seeds or None,
+            lookback_days=request.lookback_days,
+            max_videos_per_seed=request.max_videos_per_seed,
+            ai_only=request.ai_only,
+            max_terms=request.max_terms,
+        )
+        result = await loop.run_in_executor(None, runner)
+        _update_app_trend_job(job_id, status="completed", result=result)
+        _append_app_trend_log(job_id, f"[+] Trend discovery complete. Ranked {len(result.get('terms', []))} term(s).")
+    except Exception as exc:
+        _update_app_trend_job(job_id, status="failed", error=str(exc))
+        _append_app_trend_log(job_id, f"[!] Trend discovery failed: {exc}")
 
 
 # ==================== API Endpoints ====================
@@ -416,6 +459,7 @@ async def root():
             "outliers_direct": "GET /api/v1/outliers/direct?query=topic",
             "web_outlier": "POST /api/v1/app/outlier",
             "web_discovery": "POST /api/v1/app/discovery",
+            "web_trends": "POST /api/v1/app/trends",
             "web_theme": "POST /api/v1/app/theme",
             "web_angles": "POST /api/v1/app/angles",
             "web_create": "POST /api/v1/app/create",
@@ -611,6 +655,23 @@ async def app_discovery_search(request: DiscoveryRequest):
     }
 
 
+@app.post("/api/v1/app/trends")
+async def app_trend_search(request: TrendRequest):
+    """Run trend discovery for the web app."""
+    seeds = [seed.strip() for seed in (request.seeds or "").split(",") if seed.strip()]
+    agent = TrendAgent()
+    loop = asyncio.get_event_loop()
+    runner = partial(
+        agent.run,
+        seeds=seeds or None,
+        lookback_days=request.lookback_days,
+        max_videos_per_seed=request.max_videos_per_seed,
+        ai_only=request.ai_only,
+        max_terms=request.max_terms,
+    )
+    return await loop.run_in_executor(None, runner)
+
+
 @app.post("/api/v1/app/discovery/start")
 async def app_discovery_search_start(
     request: DiscoveryRequest,
@@ -639,6 +700,34 @@ async def app_discovery_search_start(
     }
 
 
+@app.post("/api/v1/app/trends/start")
+async def app_trend_search_start(
+    request: TrendRequest,
+    background_tasks: BackgroundTasks
+):
+    """Start async trend discovery for the web app and return a job id."""
+    job_id = str(uuid.uuid4())
+    with app_trend_jobs_lock:
+        app_trend_jobs[job_id] = {
+            "job_id": job_id,
+            "status": "processing",
+            "seeds": request.seeds,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "logs": [],
+            "result": None,
+            "error": None,
+        }
+
+    background_tasks.add_task(run_app_trend_job, job_id, request)
+
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "seeds": request.seeds,
+    }
+
+
 @app.get("/api/v1/app/discovery/jobs/{job_id}")
 async def app_discovery_search_status(job_id: str):
     """Poll job status and progress logs for a running browser discovery search."""
@@ -646,6 +735,16 @@ async def app_discovery_search_status(job_id: str):
         job = app_discovery_jobs.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Discovery job not found")
+        return job
+
+
+@app.get("/api/v1/app/trends/jobs/{job_id}")
+async def app_trend_search_status(job_id: str):
+    """Poll job status and progress logs for a running browser trend discovery."""
+    with app_trend_jobs_lock:
+        job = app_trend_jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Trend job not found")
         return job
 
 

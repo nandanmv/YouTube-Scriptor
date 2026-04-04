@@ -420,6 +420,7 @@ def render_app_ui() -> str:
     </section>
 
     <nav class="nav">
+      <a href="#trends">Trends</a>
       <a href="#outlier">Outlier</a>
       <a href="#discovery">Discovery</a>
       <a href="#theme">Theme</a>
@@ -429,6 +430,33 @@ def render_app_ui() -> str:
     </nav>
 
     <section class="grid">
+      <section class="section" id="trends">
+        <h2>Trend Discovery</h2>
+        <p>Mine recent tech videos and surface the AI terms rising fastest on YouTube right now.</p>
+        <form id="trend-form" class="controls">
+          <label class="field full">
+            <span class="field-label">Seed Topics</span>
+            <textarea id="trend-seeds" placeholder="artificial intelligence, ai agents, llm, coding, automation">artificial intelligence, ai agents, llm, coding, developer tools, automation</textarea>
+          </label>
+          <label class="field">
+            <span class="field-label">Lookback Days</span>
+            <input id="trend-lookback" type="number" min="1" max="90" value="14" placeholder="Days">
+          </label>
+          <label class="field">
+            <span class="field-label">Videos Per Seed</span>
+            <input id="trend-limit" type="number" min="5" max="50" value="15" placeholder="Videos per seed">
+          </label>
+          <label class="field">
+            <span class="field-label">Max Terms</span>
+            <input id="trend-max-terms" type="number" min="3" max="25" value="12" placeholder="Max terms">
+          </label>
+          <label class="checkbox-inline"><input id="trend-ai-only" type="checkbox" checked><span>Only show AI-related terms</span></label>
+          <button class="full" type="submit">Run Trend Discovery</button>
+        </form>
+        <div class="status" id="trend-status">Use this to spot rising AI phrases before drilling into outliers and scripts.</div>
+        <div class="output" id="trend-output"></div>
+      </section>
+
       <section class="section" id="outlier">
         <h2>Outlier Search</h2>
         <p>Single-term search with optional AI insights. Select results here and reuse them in downstream workflows.</p>
@@ -557,7 +585,7 @@ def render_app_ui() -> str:
 
     <section class="hero footer">
       <p class="footer-copy">
-        This app fronts the current workflow: outlier search, discovery, theme, angles, create, and quick-script.
+        This app fronts the current workflow: trend discovery, outlier search, discovery, theme, angles, create, and quick-script.
         Use Outlier first if you want Theme, Angles, and Create to reuse the same source set.
       </p>
       <div class="footer-actions">
@@ -573,6 +601,8 @@ def render_app_ui() -> str:
     const state = {
       latestOutliers: [],
       selectedUrls: new Set(),
+      activeTrendJobId: null,
+      trendPollTimer: null,
       activeOutlierJobId: null,
       outlierPollTimer: null,
       activeDiscoveryJobId: null,
@@ -714,6 +744,13 @@ def render_app_ui() -> str:
       }
     }
 
+    function stopTrendPolling() {
+      if (state.trendPollTimer) {
+        clearInterval(state.trendPollTimer);
+        state.trendPollTimer = null;
+      }
+    }
+
     function stopDiscoveryPolling() {
       if (state.discoveryPollTimer) {
         clearInterval(state.discoveryPollTimer);
@@ -749,6 +786,82 @@ def render_app_ui() -> str:
       }
     }
 
+    function renderTrendResult(result) {
+      const terms = result?.terms || [];
+      if (!terms.length) {
+        return '<p class="meta">No AI trend terms were ranked from the recent video sample.</p>';
+      }
+      return `
+        <div class="cards">
+          <div class="meta">Videos analyzed: ${formatNumber(result.videos_analyzed || 0)} | Unique channels: ${formatNumber(result.unique_channels || 0)}</div>
+          ${terms.map((item) => `
+            <div class="card">
+              <span class="tag">${escapeHtml(item.momentum || "trend")} · ${escapeHtml(String(item.trend_score || 0))}</span>
+              <h3 class="title">${escapeHtml(item.term)}</h3>
+              <div class="stats">
+                <div class="stat"><span class="stat-label">Mentions</span><span class="stat-value">${formatNumber(item.mentions || 0)}</span></div>
+                <div class="stat"><span class="stat-label">Channels</span><span class="stat-value">${formatNumber(item.distinct_channels || 0)}</span></div>
+                <div class="stat"><span class="stat-label">Views/Day</span><span class="stat-value">${formatNumber(Math.round(item.avg_views_per_day || 0))}</span></div>
+              </div>
+              ${item.sample_videos?.length ? `
+                <div class="checkboxes">
+                  ${item.sample_videos.map((video) => `
+                    <div class="checkbox-row">
+                      <div>
+                        <h3 class="title"><a class="link" href="${escapeHtml(video.url)}" target="_blank" rel="noreferrer">${escapeHtml(video.title || "Video")}</a></h3>
+                        <p class="meta">${escapeHtml(video.channel || "Unknown channel")} · ${escapeHtml(video.upload_date || "Unknown date")} · ${formatNumber(video.views || 0)} views</p>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              ` : ""}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderTrendProgress(logs) {
+      const logLines = logs && logs.length
+        ? [...logs].reverse().map((line) => escapeHtml(line)).join("\\n")
+        : "Waiting for first progress update...";
+
+      return `
+        <div class="cards">
+          <div class="card">
+            <span class="tag">Live Progress</span>
+            <div class="progress-log">${logLines}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function pollTrendJob(jobId) {
+      try {
+        const data = await getJson(`/api/v1/app/trends/jobs/${encodeURIComponent(jobId)}`, 90000);
+        setOutputHtml("trend-output", renderTrendProgress(data.logs || []));
+
+        if (data.status === "completed") {
+          stopTrendPolling();
+          state.activeTrendJobId = null;
+          setStatus("trend-status", `Trend discovery ranked ${(data.result?.terms || []).length} AI term(s).`);
+          setOutputHtml("trend-output", renderTrendResult(data.result || {}));
+          return;
+        }
+
+        if (data.status === "failed") {
+          stopTrendPolling();
+          state.activeTrendJobId = null;
+          setStatus("trend-status", data.error || "Trend discovery failed.");
+          setOutputHtml("trend-output", renderTrendProgress(data.logs || []));
+        }
+      } catch (error) {
+        stopTrendPolling();
+        state.activeTrendJobId = null;
+        setStatus("trend-status", error.message || "Trend polling failed.");
+      }
+    }
+
     function renderDiscovery(items, reportName) {
       if (!items || !items.length) {
         return '<p class="meta">No discovery results returned.</p>';
@@ -759,7 +872,7 @@ def render_app_ui() -> str:
           ${items.slice(0, 12).map((item) => `
             <div class="card">
               <span class="tag">${item.ratio.toFixed(2)}x outlier</span>
-              <h3 class="title">${escapeHtml(item.title)}</h3>
+              <h3 class="title"><a class="link" href="${escapeHtml(item.url || '#')}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a></h3>
               <p class="meta">${escapeHtml(item.channel || "Unknown channel")}</p>
             </div>
           `).join("")}
@@ -895,6 +1008,38 @@ def render_app_ui() -> str:
       } catch (error) {
         setStatus("outlier-status", error.message || "Outlier search failed.");
         setOutputHtml("outlier-output", `<p class="meta">${escapeHtml(error.message || "Outlier search failed.")}</p>`);
+      }
+    });
+
+    document.getElementById("trend-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const seeds = document.getElementById("trend-seeds").value.trim();
+      const lookbackDays = Number(document.getElementById("trend-lookback").value || 14);
+      const maxVideosPerSeed = Number(document.getElementById("trend-limit").value || 15);
+      const maxTerms = Number(document.getElementById("trend-max-terms").value || 12);
+      const aiOnly = document.getElementById("trend-ai-only").checked;
+      stopTrendPolling();
+      setStatus("trend-status", "Running trend discovery...");
+      setOutputHtml("trend-output", renderTrendProgress([`[*] Queuing trend discovery for ${lookbackDays} day lookback...`]));
+      try {
+        const job = await postJson("/api/v1/app/trends/start", {
+          seeds,
+          lookback_days: lookbackDays,
+          max_videos_per_seed: maxVideosPerSeed,
+          ai_only: aiOnly,
+          max_terms: maxTerms
+        });
+        state.activeTrendJobId = job.job_id;
+        setStatus("trend-status", "Trend discovery started. Showing live progress...");
+        await pollTrendJob(job.job_id);
+        if (state.activeTrendJobId) {
+          state.trendPollTimer = setInterval(() => {
+            pollTrendJob(job.job_id);
+          }, 2000);
+        }
+      } catch (error) {
+        setStatus("trend-status", error.message || "Trend discovery failed.");
+        setOutputHtml("trend-output", `<p class="meta">${escapeHtml(error.message || "Trend discovery failed.")}</p>`);
       }
     });
 

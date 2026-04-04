@@ -156,13 +156,14 @@ class OutlierAgent(BaseAgent):
         video_views = video.get('view_count') or 0
         video_url = f"https://www.youtube.com/watch?v={video.get('id')}"
         median_views = YouTubeUtility.get_channel_baseline(channel_url, config.CHANNEL_HISTORY)
-        
-        ratio = video_views / median_views if median_views > 0 else 0
+        numeric_median_views = median_views if isinstance(median_views, (int, float)) else None
+
+        ratio = video_views / numeric_median_views if numeric_median_views and numeric_median_views > 0 else 0
         
         # Super Outlier Bypass: If ratio is >= 10x, allow even if median is low
         is_super_outlier = ratio >= 10.0
         
-        if not is_super_outlier and (median_views is None or median_views < config.MIN_MEDIAN_VIEWS):
+        if not is_super_outlier and (numeric_median_views is None or numeric_median_views < config.MIN_MEDIAN_VIEWS):
             return None
         
         if ratio >= config.OUTLIER_THRESHOLD:
@@ -185,7 +186,7 @@ class OutlierAgent(BaseAgent):
                 'title': video.get('title'),
                 'url': video_url,
                 'views': video_views,
-                'median_views': median_views,
+                'median_views': numeric_median_views,
                 'ratio': ratio,
                 'channel': video.get('channel'),
                 'subscribers': subscribers

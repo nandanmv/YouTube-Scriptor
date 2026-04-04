@@ -181,6 +181,14 @@ class DiscoveryRequest(BaseModel):
     terms: str = Field(..., min_length=1, max_length=500)
 
 
+class TrendRequest(BaseModel):
+    seeds: Optional[str] = Field(default=None, max_length=500)
+    lookback_days: int = Field(default=14, ge=1, le=90)
+    max_videos_per_seed: int = Field(default=15, ge=5, le=50)
+    ai_only: bool = True
+    max_terms: int = Field(default=12, ge=3, le=25)
+
+
 class ThemeRequest(BaseModel):
     topic: str = Field(..., min_length=1, max_length=200)
     videos: Optional[List[Dict[str, Any]]] = None

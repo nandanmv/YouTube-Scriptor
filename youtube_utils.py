@@ -98,6 +98,16 @@ class YouTubeUtility:
         return YouTubeUtility._run_json_command(cmd)
 
     @staticmethod
+    def _search_recent_full_metadata(query: str, limit: int) -> List[Dict[str, Any]]:
+        cmd = [
+            *YouTubeUtility._yt_dlp_command(),
+            f"ytsearchdate{limit}:{query}",
+            "--dump-json",
+            "--quiet"
+        ]
+        return YouTubeUtility._run_json_command(cmd)
+
+    @staticmethod
     def _search_flat(query: str, limit: int) -> List[Dict[str, Any]]:
         cmd = [
             *YouTubeUtility._yt_dlp_command(),
@@ -156,6 +166,14 @@ class YouTubeUtility:
         if short_only:
             return YouTubeUtility.search_shorts(query, limit)
         return YouTubeUtility._search_flat(query, limit)
+
+    @staticmethod
+    def search_recent(query: str, limit: int, logger=None) -> List[Dict[str, Any]]:
+        if logger:
+            logger(f"[*] Searching recent videos for '{query}' (limit: {limit})...")
+        else:
+            print(f"[*] Searching recent videos for '{query}' (limit: {limit})...")
+        return YouTubeUtility._search_recent_full_metadata(query, limit)
 
     @staticmethod
     def get_channel_info(channel_url: str) -> Dict[str, Any]:
