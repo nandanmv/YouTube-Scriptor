@@ -106,6 +106,10 @@ Focus on:
 2. Recurring Topics & Subtopics: What specific subjects keep coming up?
 3. Universal Success Criteria: What is the shared strategic thread?
 4. Audience Intent: What is the viewer looking for?
+5. Saturated Angles: What framing or formats are repeated so often they now feel crowded?
+6. Open Gaps: What strong audience needs or promising angles appear underserved or missing?
+7. Viewer Desires: What concrete desires, fears, jobs-to-be-done, or outcomes are driving clicks?
+8. Ranked Video Opportunities: Propose the best next video options based on open gaps.
 
 Return JSON:
 {{
@@ -116,7 +120,19 @@ Return JSON:
         "common_title_phrases": ["phrase 1", "phrase 2"],
         "recurring_topics": ["topic 1", "topic 2"],
         "success_criteria_patterns": ["pattern 1", "pattern 2"],
-        "audience_intent": "description of intent"
+        "audience_intent": "description of intent",
+        "saturated_angles": ["angle 1", "angle 2"],
+        "open_gaps": ["gap 1", "gap 2"],
+        "viewer_desires": ["desire 1", "desire 2"],
+        "ranked_video_opportunities": [
+            {{
+                "angle_name": "Angle name",
+                "viewer_desire": "What the viewer wants",
+                "why_it_is_open": "Why this is under-served",
+                "recommended_format": "Tutorial / breakdown / case study / warning / comparison",
+                "opportunity_score": 9
+            }}
+        ]
     }}
 }}
 """

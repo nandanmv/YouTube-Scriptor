@@ -1,8 +1,6 @@
 
 
-Always start with CTA, what I want from the video. Then use topics, outliers to make a video that help with that CTA. 
-
-                                                                                                                                                                                              
+Always start with CTA, what I want from the video. Then use topics, outliers to make a video that help with that CTA.                                                                                                                                                                                   
 
 # Single-term search for outliers with AI insights (guarantees min 10 outliers)
 python3.10 main.py outlier "claude code"

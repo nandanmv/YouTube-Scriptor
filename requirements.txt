@@ -15,7 +15,7 @@ httpx
 # redis
 
 # Phase 3: Script Generation
-# youtube-transcript-api
+youtube-transcript-api
 
 # Development and Testing
 # pytest

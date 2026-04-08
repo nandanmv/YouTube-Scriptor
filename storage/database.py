@@ -75,9 +75,15 @@ class AnalysisStore:
                     completed_at TEXT,
                     webhook_url TEXT,
                     error_message TEXT,
-                    result_count INTEGER
+                    result_count INTEGER,
+                    job_type TEXT DEFAULT 'outlier'
                 )
             """)
+            # Migrate existing DB: add job_type if missing
+            try:
+                conn.execute("ALTER TABLE search_jobs ADD COLUMN job_type TEXT DEFAULT 'outlier'")
+            except Exception:
+                pass  # Column already exists
 
             # Outlier videos table
             conn.execute("""
@@ -116,12 +122,18 @@ class AnalysisStore:
                     video_url TEXT NOT NULL UNIQUE,
                     video_title TEXT NOT NULL,
                     success_criteria TEXT,
+                    subtopics_covered TEXT,
                     reusable_insights TEXT,
                     ultimate_titles TEXT,
                     alternate_hooks TEXT,
                     generated_at TEXT NOT NULL
                 )
             """)
+            # Migrate existing DB: add subtopics_covered if missing
+            try:
+                conn.execute("ALTER TABLE insights ADD COLUMN subtopics_covered TEXT")
+            except Exception:
+                pass  # Column already exists
 
             # Scripts table (for Phase 3)
             conn.execute("""
@@ -138,6 +150,45 @@ class AnalysisStore:
                 )
             """)
 
+            # Themes table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS themes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT NOT NULL,
+                    themes_data TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_themes_topic
+                ON themes(topic)
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS research_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT NOT NULL,
+                    research_data TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_research_topic
+                ON research_results(topic)
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS hooks_tp_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    htp_data TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_hooks_tp_topic
+                ON hooks_tp_results(topic)
+            """)
+
     # ==================== Job Management ====================
 
     def save_job(self, job: SearchJob) -> None:
@@ -150,14 +201,15 @@ class AnalysisStore:
         with self.transaction() as conn:
             conn.execute("""
                 INSERT INTO search_jobs
-                (job_id, query, status, created_at, webhook_url)
-                VALUES (?, ?, ?, ?, ?)
+                (job_id, query, status, created_at, webhook_url, job_type)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 job.job_id,
                 job.query,
                 job.status.value,
                 job.created_at.isoformat(),
-                job.webhook_url
+                job.webhook_url,
+                getattr(job, 'job_type', 'outlier') or 'outlier',
             ))
 
     def get_job(self, job_id: str) -> Optional[SearchJob]:
@@ -395,13 +447,14 @@ class AnalysisStore:
         with self.transaction() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO insights
-                (video_url, video_title, success_criteria, reusable_insights,
-                 ultimate_titles, alternate_hooks, generated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (video_url, video_title, success_criteria, subtopics_covered,
+                 reusable_insights, ultimate_titles, alternate_hooks, generated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 insight.video_url,
                 insight.video_title,
                 json.dumps(insight.success_criteria),
+                insight.subtopics_covered or "",
                 json.dumps(insight.reusable_insights),
                 json.dumps(insight.ultimate_titles),
                 json.dumps(insight.alternate_hooks),
@@ -527,3 +580,250 @@ class AnalysisStore:
         if hasattr(self._local, 'conn'):
             self._local.conn.close()
             delattr(self._local, 'conn')
+
+    # ==================== Past Runs ====================
+
+    def list_outlier_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """List completed outlier (single-term) jobs with summary info."""
+        cursor = self.conn.execute("""
+            SELECT job_id, query, created_at, result_count
+            FROM search_jobs
+            WHERE status = 'completed' AND result_count > 0
+              AND (job_type = 'outlier' OR job_type IS NULL)
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        return [
+            {
+                "job_id": row["job_id"],
+                "query": row["query"],
+                "created_at": row["created_at"],
+                "result_count": row["result_count"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def list_discovery_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """List completed discovery (multi-term) jobs with summary info."""
+        cursor = self.conn.execute("""
+            SELECT job_id, query, created_at, result_count
+            FROM search_jobs
+            WHERE status = 'completed' AND result_count > 0
+              AND job_type = 'discovery'
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        return [
+            {
+                "job_id": row["job_id"],
+                "query": row["query"],
+                "created_at": row["created_at"],
+                "result_count": row["result_count"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def get_outlier_videos_with_insights(self, job_id: str) -> List[Dict[str, Any]]:
+        """
+        Get outlier videos for a job with their AI insights.
+
+        Args:
+            job_id: Job identifier
+
+        Returns:
+            List of outlier dicts with title, url, views, ratio, channel, subscribers,
+            plus success_criteria, subtopics_covered, reusable_insights, ultimate_titles,
+            alternate_hooks from the insights table.
+        """
+        cursor = self.conn.execute("""
+            SELECT ov.url, ov.title, ov.views, ov.median_views, ov.ratio,
+                   ov.channel, ov.subscribers,
+                   i.success_criteria, i.subtopics_covered, i.reusable_insights,
+                   i.ultimate_titles, i.alternate_hooks
+            FROM outlier_videos ov
+            LEFT JOIN insights i ON ov.url = i.video_url
+            WHERE ov.job_id = ?
+            ORDER BY ov.ratio DESC
+        """, (job_id,))
+
+        results = []
+        for row in cursor.fetchall():
+            video = {
+                "title": row["title"],
+                "url": row["url"],
+                "views": row["views"],
+                "median_views": row["median_views"],
+                "ratio": row["ratio"],
+                "channel": row["channel"],
+                "subscribers": row["subscribers"],
+            }
+            if row["success_criteria"]:
+                try:
+                    video["success_criteria"] = json.loads(row["success_criteria"])
+                except (json.JSONDecodeError, TypeError):
+                    video["success_criteria"] = row["success_criteria"]
+            if row["subtopics_covered"]:
+                video["subtopics_covered"] = row["subtopics_covered"]
+            if row["reusable_insights"]:
+                try:
+                    video["reusable_insights"] = json.loads(row["reusable_insights"])
+                except (json.JSONDecodeError, TypeError):
+                    video["reusable_insights"] = row["reusable_insights"]
+            if row["ultimate_titles"]:
+                try:
+                    video["ultimate_titles"] = json.loads(row["ultimate_titles"])
+                except (json.JSONDecodeError, TypeError):
+                    video["ultimate_titles"] = row["ultimate_titles"]
+            if row["alternate_hooks"]:
+                try:
+                    video["alternate_hooks"] = json.loads(row["alternate_hooks"])
+                except (json.JSONDecodeError, TypeError):
+                    video["alternate_hooks"] = row["alternate_hooks"]
+            results.append(video)
+        return results
+
+    # ==================== Theme Persistence ====================
+
+    def save_theme(self, topic: str, themes_data: Dict[str, Any]) -> int:
+        """
+        Save theme analysis result.
+
+        Args:
+            topic: Topic string
+            themes_data: Theme data dict from ThemeAgent
+
+        Returns:
+            ID of the saved record
+        """
+        with self.transaction() as conn:
+            cursor = conn.execute("""
+                INSERT INTO themes (topic, themes_data, created_at)
+                VALUES (?, ?, ?)
+            """, (topic, json.dumps(themes_data), datetime.now().isoformat()))
+            return cursor.lastrowid
+
+    def list_themes(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        List saved theme analyses.
+
+        Args:
+            limit: Maximum number to return
+
+        Returns:
+            List of dicts with id, topic, created_at
+        """
+        cursor = self.conn.execute("""
+            SELECT id, topic, created_at
+            FROM themes
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+
+        return [
+            {
+                "id": row["id"],
+                "topic": row["topic"],
+                "created_at": row["created_at"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def get_theme(self, theme_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a saved theme by ID.
+
+        Args:
+            theme_id: Theme record ID
+
+        Returns:
+            Dict with topic, themes_data, created_at or None
+        """
+        cursor = self.conn.execute("""
+            SELECT topic, themes_data, created_at
+            FROM themes WHERE id = ?
+        """, (theme_id,))
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        return {
+            "topic": row["topic"],
+            "themes_data": json.loads(row["themes_data"]),
+            "created_at": row["created_at"],
+        }
+
+    # ==================== Research Results ====================
+
+    def save_research(self, topic: str, research_data: Dict[str, Any]) -> int:
+        with self.transaction() as conn:
+            cursor = conn.execute("""
+                INSERT INTO research_results (topic, research_data, created_at)
+                VALUES (?, ?, ?)
+            """, (topic, json.dumps(research_data), datetime.now().isoformat()))
+            return cursor.lastrowid or 0
+
+    def list_research(self, limit: int = 50) -> List[Dict[str, Any]]:
+        cursor = self.conn.execute("""
+            SELECT id, topic, created_at
+            FROM research_results
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        return [
+            {"id": row["id"], "topic": row["topic"], "created_at": row["created_at"]}
+            for row in cursor.fetchall()
+        ]
+
+    def get_research(self, research_id: int) -> Optional[Dict[str, Any]]:
+        cursor = self.conn.execute("""
+            SELECT topic, research_data, created_at
+            FROM research_results WHERE id = ?
+        """, (research_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": research_id,
+            "topic": row["topic"],
+            "research_data": json.loads(row["research_data"]),
+            "created_at": row["created_at"],
+        }
+
+    # ==================== Hooks & Talking Points Results ====================
+
+    def save_hooks_tp(self, topic: str, title: str, htp_data: Dict[str, Any]) -> int:
+        with self.transaction() as conn:
+            cursor = conn.execute("""
+                INSERT INTO hooks_tp_results (topic, title, htp_data, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (topic, title, json.dumps(htp_data), datetime.now().isoformat()))
+            return cursor.lastrowid or 0
+
+    def list_hooks_tp(self, limit: int = 50) -> List[Dict[str, Any]]:
+        cursor = self.conn.execute("""
+            SELECT id, topic, title, created_at
+            FROM hooks_tp_results
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        return [
+            {"id": row["id"], "topic": row["topic"], "title": row["title"], "created_at": row["created_at"]}
+            for row in cursor.fetchall()
+        ]
+
+    def get_hooks_tp(self, htp_id: int) -> Optional[Dict[str, Any]]:
+        cursor = self.conn.execute("""
+            SELECT topic, title, htp_data, created_at
+            FROM hooks_tp_results WHERE id = ?
+        """, (htp_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": htp_id,
+            "topic": row["topic"],
+            "title": row["title"],
+            "htp_data": json.loads(row["htp_data"]),
+            "created_at": row["created_at"],
+        }

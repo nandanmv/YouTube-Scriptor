@@ -23,11 +23,25 @@ class TrendAgent(BaseAgent):
     ]
 
     TERM_PATTERNS = {
-        "AI agents": [r"\bai agents?\b", r"\bagentic ai\b"],
+        "AI agents": [
+            r"\bai agents?\b",
+            r"\bagentic ai\b",
+            r"\bagentic\b",
+            r"\bagents?\b",
+            r"\bagent frameworks?\b",
+            r"\bautonomous agents?\b",
+        ],
         "MCP": [r"\bmcp\b", r"\bmodel context protocol\b"],
         "Claude Code": [r"\bclaude code\b"],
         "Cursor": [r"\bcursor\b"],
-        "RAG": [r"\brag\b", r"\bretrieval augmented generation\b"],
+        "RAG": [
+            r"\brag\b",
+            r"\bretrieval augmented generation\b",
+            r"\bretrieval[- ]augmented\b",
+            r"\bvector (db|database|search)\b",
+            r"\bsemantic search\b",
+            r"\bhybrid search\b",
+        ],
         "LLMs": [r"\bllms?\b", r"\blarge language models?\b"],
         "Vibe coding": [r"\bvibe coding\b", r"\bvibecoding\b"],
         "n8n": [r"\bn8n\b"],
@@ -39,12 +53,14 @@ class TrendAgent(BaseAgent):
         "Gemini": [r"\bgemini\b"],
         "DeepSeek": [r"\bdeepseek\b"],
         "LangChain": [r"\blangchain\b", r"\blanggraph\b"],
+        "Hermes": [r"\bhermes\b", r"\bopenhermes\b", r"\bhermes agents?\b", r"\bhermes flow\b"],
         "AI automation": [r"\bai automation\b", r"\bai workflow(s)?\b", r"\bautomation\b"],
     }
 
     TERM_PRIORITY = [
         "Claude Code",
         "MCP",
+        "Hermes",
         "Cursor",
         "RAG",
         "n8n",

@@ -41,9 +41,13 @@ from models.schemas import (
     DiscoveryRequest,
     TrendRequest,
     ThemeRequest,
+    ResearchRequest,
     AnglesRequest,
+    HooksTalkingPointsRequest,
     CreateScriptRequest,
-    QuickScriptRequest
+    QuickScriptRequest,
+    SearchJob,
+    Insight,
 )
 from storage.database import AnalysisStore
 from agents.outlier_agent import OutlierAgent
@@ -52,6 +56,8 @@ from agents.trend_agent import TrendAgent
 from agents.shortlist_agent import ShortlistAgent
 from agents.theme_agent import ThemeAgent
 from agents.angle_from_outliers_agent import AngleFromOutliersAgent
+from agents.researcher_agent import ResearcherAgent
+from agents.hooks_talking_points_agent import HooksTalkingPointsAgent
 from agents.script_creator_agent import ScriptCreatorAgent
 from agents.quick_script_agent import QuickScriptAgent
 from api.home_ui import render_home_app
@@ -91,6 +97,8 @@ app_discovery_jobs = {}
 app_discovery_jobs_lock = threading.Lock()
 app_trend_jobs = {}
 app_trend_jobs_lock = threading.Lock()
+app_create_jobs = {}
+app_create_jobs_lock = threading.Lock()
 PUBLIC_PATHS = {"/health", "/favicon.ico", "/login", "/api/v1/auth/login", "/api/v1/auth/logout"}
 HTML_PATHS = {"/", "/app", "/home", "/outliers", "/compare", "/docs"}
 
@@ -317,6 +325,47 @@ def _append_app_outlier_log(job_id: str, message: str):
         job["updated_at"] = datetime.now().isoformat()
 
 
+def _persist_outlier_results_to_db(job_id: str, query: str, results: list, job_type: str = "outlier") -> None:
+    """Save web app outlier/discovery results to DB so they appear in 'Load Past Run' dropdown."""
+    try:
+        job = SearchJob(
+            job_id=job_id,
+            query=query,
+            status=JobStatus.COMPLETED,
+            created_at=datetime.now(),
+            completed_at=datetime.now(),
+            result_count=len(results),
+            job_type=job_type,
+        )
+        store.save_job(job)
+        store.update_job_status(job_id, "completed", result_count=len(results))
+        store.save_outliers(job_id, results)
+
+        # Save AI insights (including subtopics_covered) for future reuse
+        for r in results:
+            sc = r.get("success_criteria", "")
+            if not sc or sc in ("Analysis failed", "N/A"):
+                continue
+            try:
+                def _to_list(v):
+                    return [v] if isinstance(v, str) else (v or [])
+                insight = Insight(
+                    video_url=r.get("url", ""),
+                    video_title=r.get("title", ""),
+                    success_criteria=_to_list(r.get("success_criteria", "")),
+                    subtopics_covered=r.get("subtopics_covered", "") or "",
+                    reusable_insights=_to_list(r.get("reusable_insights", "")),
+                    ultimate_titles=_to_list(r.get("ultimate_titles", "")),
+                    alternate_hooks=_to_list(r.get("alternate_hooks", "")),
+                    generated_at=datetime.now()
+                )
+                store.save_insight(insight)
+            except Exception:
+                pass
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not persist outlier results to DB: {e}[/yellow]")
+
+
 async def run_app_outlier_job(job_id: str, request: DirectOutlierRequest):
     """Background task for browser outlier search with progress logs."""
     try:
@@ -333,6 +382,12 @@ async def run_app_outlier_job(job_id: str, request: DirectOutlierRequest):
             max_subscribers=request.max_subscribers
         )
         results = await loop.run_in_executor(None, runner)
+
+        # Persist to DB so this run appears in the "Load Past Run" dropdown
+        await asyncio.get_event_loop().run_in_executor(
+            None, _persist_outlier_results_to_db, job_id, request.query, results
+        )
+
         _update_app_outlier_job(
             job_id,
             status="completed",
@@ -380,6 +435,22 @@ def _append_app_trend_log(job_id: str, message: str):
         job["updated_at"] = datetime.now().isoformat()
 
 
+def _update_app_create_job(job_id: str, **updates):
+    with app_create_jobs_lock:
+        if job_id in app_create_jobs:
+            app_create_jobs[job_id].update(updates)
+            app_create_jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+
+def _append_app_create_log(job_id: str, message: str):
+    with app_create_jobs_lock:
+        job = app_create_jobs.get(job_id)
+        if not job:
+            return
+        job["logs"].append(message)
+        job["updated_at"] = datetime.now().isoformat()
+
+
 async def run_app_discovery_job(job_id: str, request: DiscoveryRequest):
     """Background task for browser discovery with progress logs."""
     try:
@@ -389,6 +460,13 @@ async def run_app_discovery_job(job_id: str, request: DiscoveryRequest):
         loop = asyncio.get_event_loop()
         runner = partial(agent.run, terms)
         results, report_name = await loop.run_in_executor(None, runner)
+
+        # Persist to DB as a discovery job
+        query_label = ", ".join(terms)
+        await asyncio.get_event_loop().run_in_executor(
+            None, _persist_outlier_results_to_db, job_id, query_label, results, "discovery"
+        )
+
         _update_app_discovery_job(
             job_id,
             status="completed",
@@ -428,6 +506,64 @@ async def run_app_trend_job(job_id: str, request: TrendRequest):
         _append_app_trend_log(job_id, f"[!] Trend discovery failed: {exc}")
 
 
+async def run_app_create_job(job_id: str, request: CreateScriptRequest):
+    """Background task — runs ScriptCreatorAgent with progress_callback logging."""
+    try:
+        _append_app_create_log(job_id, "[*] Starting script creation...")
+        
+        seed_angles = None
+        seed_sources = None
+
+        if request.selected_videos:
+            angle_agent = AngleFromOutliersAgent()
+            loop = asyncio.get_event_loop()
+            angle_runner = partial(angle_agent.run, topic=request.topic, videos=request.selected_videos)
+            angle_result = await loop.run_in_executor(None, angle_runner)
+            seed_angles = angle_result.get("angles", [])
+            seed_sources = [
+                {
+                    "title": item.get("title"),
+                    "url": item.get("url"),
+                    "channel": item.get("channel"),
+                    "views": item.get("views", 0),
+                    "ratio": item.get("ratio", 0),
+                }
+                for item in request.selected_videos
+            ]
+
+        agent = ScriptCreatorAgent(
+            progress_callback=lambda message: _append_app_create_log(job_id, message)
+        )
+        loop = asyncio.get_event_loop()
+        runner = partial(
+            agent.run,
+            topic=request.topic,
+            notes=request.notes,
+            interactive=False,
+            auto_select=None,
+            manual_mode=False,
+            duration=request.duration,
+            top_n_outliers=request.top_n_outliers,
+            strategy=request.strategy,
+            seed_angles=seed_angles,
+            seed_sources=seed_sources,
+            selected_title=request.selected_title,
+            selected_topics=request.selected_topics,
+            research_packet=request.research_packet,
+            selected_hook_script=request.selected_hook_script,
+            talking_points=request.talking_points,
+            outro=request.outro,
+            shorts_segments=request.shorts_segments,
+            selected_thumbnail=request.selected_thumbnail,
+        )
+        result = await loop.run_in_executor(None, runner)
+        _update_app_create_job(job_id, status="completed", result=result)
+        _append_app_create_log(job_id, "[+] Script creation complete.")
+    except Exception as exc:
+        _update_app_create_job(job_id, status="failed", error=str(exc))
+        _append_app_create_log(job_id, f"[!] Script creation failed: {exc}")
+
+
 # ==================== API Endpoints ====================
 
 @app.get("/", response_class=HTMLResponse)
@@ -461,6 +597,7 @@ async def root():
             "web_discovery": "POST /api/v1/app/discovery",
             "web_trends": "POST /api/v1/app/trends",
             "web_theme": "POST /api/v1/app/theme",
+            "web_research": "POST /api/v1/app/research",
             "web_angles": "POST /api/v1/app/angles",
             "web_create": "POST /api/v1/app/create",
             "web_quick_script": "POST /api/v1/app/quick-script",
@@ -754,7 +891,95 @@ async def app_theme_analysis(request: ThemeRequest):
     agent = ThemeAgent()
     loop = asyncio.get_event_loop()
     runner = partial(agent.run, topic=request.topic, videos=request.videos)
-    return await loop.run_in_executor(None, runner)
+    result = await loop.run_in_executor(None, runner)
+    if result and "themes" in result and "error" not in result:
+        try:
+            store.save_theme(request.topic, result.get("themes", {}))
+        except Exception:
+            pass
+    return result
+
+
+@app.post("/api/v1/app/research")
+async def app_research_analysis(request: ResearchRequest):
+    """Run transcript + social research for the web app."""
+    loop = asyncio.get_event_loop()
+
+    # Auto-run theme analysis if caller didn't pass theme_data
+    theme_data = request.theme_data
+    if not theme_data and request.videos:
+        try:
+            theme_agent = ThemeAgent()
+            theme_result = await loop.run_in_executor(
+                None,
+                partial(theme_agent.run, topic=request.topic, videos=request.videos),
+            )
+            if theme_result and "themes" in theme_result and "error" not in theme_result:
+                theme_data = theme_result.get("themes", {})
+                try:
+                    store.save_theme(request.topic, theme_data)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    agent = ResearcherAgent()
+    runner = partial(
+        agent.run,
+        topic=request.topic,
+        videos=request.videos,
+        theme_data=theme_data,
+        custom_links=request.custom_links,
+        custom_notes=request.custom_notes,
+    )
+    result = await loop.run_in_executor(None, runner)
+    # Always surface theme_data at the top level so the UI can render it
+    result["theme_data"] = theme_data or {}
+
+    # Auto-save research results for later reuse
+    if result.get("best_titles") or result.get("high_level_topics"):
+        try:
+            store.save_research(request.topic, result)
+        except Exception:
+            pass
+
+    return result
+
+
+@app.post("/api/v1/app/hooks-talking-points")
+async def app_hooks_talking_points(request: HooksTalkingPointsRequest):
+    """Generate hooks, talking points outline, outro, and shorts segments."""
+    agent = HooksTalkingPointsAgent()
+    loop = asyncio.get_event_loop()
+    runner = partial(
+        agent.run,
+        topic=request.topic,
+        title=request.title,
+        topics=request.topics,
+        custom_notes=request.custom_notes,
+    )
+    result = await loop.run_in_executor(None, runner)
+    if result.get("hooks") and not result.get("error"):
+        try:
+            store.save_hooks_tp(request.topic, request.title, result)
+        except Exception:
+            pass
+    return result
+
+
+@app.get("/api/v1/past-hooks-tp")
+async def list_past_hooks_tp():
+    """List saved hooks & talking points runs."""
+    return {"results": store.list_hooks_tp(limit=100)}
+
+
+@app.get("/api/v1/past-hooks-tp/{htp_id}")
+async def get_past_hooks_tp(htp_id: int):
+    """Get a saved hooks & talking points result by ID."""
+    result = store.get_hooks_tp(htp_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Hooks & talking points result not found")
+    return result
 
 
 @app.post("/api/v1/app/angles")
@@ -764,6 +989,70 @@ async def app_angles_analysis(request: AnglesRequest):
     loop = asyncio.get_event_loop()
     runner = partial(agent.run, topic=request.topic, videos=request.videos)
     return await loop.run_in_executor(None, runner)
+
+
+@app.get("/api/v1/past-outliers")
+async def list_past_outlier_jobs():
+    """List completed outlier runs from the database."""
+    jobs = store.list_outlier_jobs(limit=100)
+    return {"jobs": jobs}
+
+
+@app.get("/api/v1/past-outliers/{job_id}")
+async def get_past_outlier_videos(job_id: str):
+    """Get outlier videos (with insights) from a past run."""
+    videos = store.get_outlier_videos_with_insights(job_id)
+    if not videos:
+        raise HTTPException(status_code=404, detail="No outliers found for this job")
+    return {"job_id": job_id, "videos": videos}
+
+
+@app.get("/api/v1/past-discovery")
+async def list_past_discovery_jobs():
+    """List completed discovery runs from the database."""
+    jobs = store.list_discovery_jobs(limit=100)
+    return {"jobs": jobs}
+
+
+@app.get("/api/v1/past-discovery/{job_id}")
+async def get_past_discovery_videos(job_id: str):
+    """Get videos from a past discovery run."""
+    videos = store.get_outlier_videos_with_insights(job_id)
+    if not videos:
+        raise HTTPException(status_code=404, detail="No videos found for this discovery job")
+    return {"job_id": job_id, "videos": videos}
+
+
+@app.get("/api/v1/past-themes")
+async def list_past_themes():
+    """List saved theme analyses."""
+    themes = store.list_themes(limit=100)
+    return {"themes": themes}
+
+
+@app.get("/api/v1/past-themes/{theme_id}")
+async def get_past_theme(theme_id: int):
+    """Get a saved theme by ID."""
+    theme = store.get_theme(theme_id)
+    if not theme:
+        raise HTTPException(status_code=404, detail="Theme not found")
+    return theme
+
+
+@app.get("/api/v1/past-research")
+async def list_past_research():
+    """List saved research results (titles & topics runs)."""
+    results = store.list_research(limit=100)
+    return {"results": results}
+
+
+@app.get("/api/v1/past-research/{research_id}")
+async def get_past_research(research_id: int):
+    """Get a saved research result by ID."""
+    result = store.get_research(research_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Research result not found")
+    return result
 
 
 @app.post("/api/v1/app/create")
@@ -802,9 +1091,55 @@ async def app_create_script(request: CreateScriptRequest):
         top_n_outliers=request.top_n_outliers,
         strategy=request.strategy,
         seed_angles=seed_angles,
-        seed_sources=seed_sources
+        seed_sources=seed_sources,
+        selected_title=request.selected_title,
+        selected_topics=request.selected_topics,
+        research_packet=request.research_packet,
+        selected_hook_script=request.selected_hook_script,
+        talking_points=request.talking_points,
+        outro=request.outro,
+        shorts_segments=request.shorts_segments,
+        selected_thumbnail=request.selected_thumbnail,
     )
     return await loop.run_in_executor(None, runner)
+
+
+@app.post("/api/v1/app/create/start")
+async def app_create_script_start(
+    request: CreateScriptRequest,
+    background_tasks: BackgroundTasks
+):
+    """Start async script creation for the web app and return a job id."""
+    job_id = str(uuid.uuid4())
+    with app_create_jobs_lock:
+        app_create_jobs[job_id] = {
+            "job_id": job_id,
+            "status": "processing",
+            "topic": request.topic,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "logs": [],
+            "result": None,
+            "error": None,
+        }
+
+    background_tasks.add_task(run_app_create_job, job_id, request)
+
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "topic": request.topic,
+    }
+
+
+@app.get("/api/v1/app/create/jobs/{job_id}")
+async def app_create_script_status(job_id: str):
+    """Poll job status and progress logs for a running browser script creation."""
+    with app_create_jobs_lock:
+        job = app_create_jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Create job not found")
+        return job
 
 
 @app.post("/api/v1/app/quick-script")

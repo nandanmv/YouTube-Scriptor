@@ -389,9 +389,45 @@ def main():
         else:
             console.print(f"\n[yellow]Script generation cancelled.[/yellow]")
 
+    elif command == "resume":
+        if len(args) < 2:
+            console.print("[bold red]Error: No topic provided.[/bold red]")
+            console.print("Usage: python3.10 main.py resume \"<topic>\" [--workflow path] [--notes \"...\"] [--duration 11]")
+            return
+
+        topic = args[1]
+        workflow_path = None
+        extra_notes = ""
+        duration = None
+        i = 2
+        while i < len(args):
+            if args[i] == "--workflow" and i + 1 < len(args):
+                workflow_path = args[i + 1]; i += 2
+            elif args[i] == "--notes" and i + 1 < len(args):
+                extra_notes = args[i + 1]; i += 2
+            elif args[i] == "--duration" and i + 1 < len(args):
+                try:
+                    duration = int(args[i + 1])
+                except ValueError:
+                    console.print(f"[bold red]Error: Invalid duration '{args[i + 1]}'[/bold red]"); return
+                i += 2
+            else:
+                i += 1
+
+        agent = ScriptCreatorAgent()
+        result = agent.resume_from_workflow(
+            topic=topic, workflow_path=workflow_path,
+            extra_notes=extra_notes, duration=duration, interactive=True
+        )
+        if result:
+            console.print(f"\n[bold green]Script resumed successfully![/bold green]")
+            console.print(f"Quality Score: {result.get('quality_report', {}).get('overall_score', 0)}/100")
+        else:
+            console.print(f"\n[yellow]Resume cancelled or failed.[/yellow]")
+
     else:
         console.print(f"[bold red]Unknown command: {command}[/bold red]")
-        console.print("Available commands: [bold]outlier, discovery, create, quick-script, serve[/bold]")
+        console.print("Available commands: [bold]outlier, discovery, create, quick-script, resume, serve[/bold]")
 
 if __name__ == "__main__":
     main()

@@ -17,7 +17,7 @@ class ResearchAgent(BaseAgent):
         self.console = Console()
         self.iteration_history = []  # Track all attempts
 
-    def run(self, topic: str, angles: list, notes: str, theme_data: dict = None) -> list:
+    def run(self, topic: str, angles: list, notes: str, theme_data: dict = None, outlier_sources: list = None) -> list:
         """
         Generate subtopics covering all selected angles, prioritized by theme data.
 
@@ -26,6 +26,7 @@ class ResearchAgent(BaseAgent):
             angles: List of selected angle dictionaries
             notes: User's rough notes
             theme_data: Data from ThemeAgent (Audience Intent, Success Patterns, etc.)
+            outlier_sources: List of outlier video data (title, subtopics, insights, success_criteria)
 
         Returns:
             List of subtopic dictionaries with title, description, key_points
@@ -34,13 +35,14 @@ class ResearchAgent(BaseAgent):
         print(f"[*] ResearchAgent researching subtopics for angles: {angle_names}...")
 
         # Use LLM to generate subtopics
-        subtopics = self._research_subtopics(topic, angles, notes, theme_data=theme_data)
+        subtopics = self._research_subtopics(topic, angles, notes, theme_data=theme_data, outlier_sources=outlier_sources)
 
         print(f"[+] Found {len(subtopics)} subtopics")
         return subtopics
 
     def _research_subtopics(self, topic: str, angles: list, notes: str, 
-                           theme_data: dict = None, iteration: int = 1) -> list:
+                           theme_data: dict = None, iteration: int = 1,
+                           outlier_sources: list = None) -> list:
         """
         Generate subtopics based on research and market themes.
 
@@ -50,6 +52,7 @@ class ResearchAgent(BaseAgent):
             notes: User's rough notes
             theme_data: Metadata from ThemeAgent
             iteration: Current iteration number
+            outlier_sources: List of outlier video data (title, subtopics, insights, success_criteria)
 
         Returns:
             List of subtopic dictionaries
@@ -69,19 +72,48 @@ MARKET THEMES (PRIORITIZE THESE):
 - **Universal Success Patterns**: {", ".join(theme_data.get('universal_success_criteria', []))}
 """
 
+        sources_text = ""
+        if outlier_sources:
+            sources_text = "\nOUTLIER VIDEOS (What these successful videos actually discussed):\n"
+            for s in outlier_sources[:10]:
+                title = s.get('title', '')
+                subtopics = s.get('subtopics', '') or s.get('subtopics_covered', '')
+                insights = s.get('reusable_insights', '')
+                success = s.get('success_criteria', '')
+                if title:
+                    sources_text += f"- \"{title}\"\n"
+                    if subtopics:
+                        sources_text += f"  Topics covered: {subtopics}\n"
+                    if insights:
+                        sources_text += f"  Key insights: {insights}\n"
+                    if success:
+                        sources_text += f"  Success criteria: {success}\n"
+
+        saturated_text = ""
+        if theme_data:
+            saturated = theme_data.get('saturated_angles', [])
+            if saturated:
+                saturated_text = f"\nSATURATED ANGLES (common in the market — include them as subtopics if the outlier videos covered them; do NOT auto-exclude):\n"
+                saturated_text += "\n".join(f"- {a}" for a in saturated)
+                saturated_text += "\n"
+
         prompt = f"""
 Create YouTube video subtopics for "{topic}".
 
+{sources_text}
 {theme_text}
-
+{saturated_text}
 SELECTED ANGLES (USE AS PERSPECTIVE/FLAVOR):
 {angles_text}
 
 User notes: {notes}
 
-Generate 8-10 subtopics that naturally incorporate the Recurring Topics and satisfy the Audience Intent.
-The Selected Angles should determine the STYLE and PERSPECTIVE of how these topics are presented.
+Generate 15-20 subtopics grounded in what the outlier videos actually discuss.
+Base subtopics on real topics covered in the videos above — not generic assumptions.
+The Selected Angles determine the STYLE and PERSPECTIVE of presentation.
+Include both open-gap and saturated topics if they appear in the successful videos.
 Each subtopic should:
+- Be drawn from what the outlier videos actually cover
 - Support the chosen angle
 - Be interesting and valuable
 - Flow logically
@@ -117,7 +149,7 @@ Return JSON: {{
 
     def run_with_feedback_loop(self, topic: str, angles: list, notes: str,
                                theme_data: dict = None, interactive: bool = True, 
-                               max_iterations: int = None) -> list:
+                               max_iterations: int = None, outlier_sources: list = None) -> list:
         """
         Generate subtopics with accumulative selection model and theme awareness.
 
@@ -136,7 +168,7 @@ Return JSON: {{
         print(f"[*] ResearchAgent researching subtopics for angles: {angle_names}...")
 
         # Initial generation
-        all_subtopics = self._research_subtopics(topic, angles, notes, theme_data=theme_data, iteration=1)
+        all_subtopics = self._research_subtopics(topic, angles, notes, theme_data=theme_data, iteration=1, outlier_sources=outlier_sources)
         self.iteration_history.append({
             "iteration": 1,
             "subtopics": all_subtopics
@@ -200,7 +232,7 @@ Return JSON: {{
 
             # Generate new batch, excluding already selected topics
             new_subtopics = self._generate_additional_subtopics(
-                topic, angles, notes, selected_subtopics, iteration, theme_data=theme_data
+                topic, angles, notes, selected_subtopics, iteration, theme_data=theme_data, outlier_sources=outlier_sources
             )
 
             self.iteration_history.append({
@@ -224,7 +256,7 @@ Return JSON: {{
 
     def _generate_additional_subtopics(self, topic: str, angles: list, notes: str,
                                        selected_subtopics: list, iteration: int,
-                                       theme_data: dict = None) -> list:
+                                       theme_data: dict = None, outlier_sources: list = None) -> list:
         """
         Generate new subtopics with theme awareness.
         """
@@ -249,11 +281,37 @@ MARKET THEMES (PRIORITIZE THESE):
 - **Universal Success Patterns**: {", ".join(theme_data.get('universal_success_criteria', []))}
 """
 
+        sources_text = ""
+        if outlier_sources:
+            sources_text = "\nOUTLIER VIDEOS (What these successful videos actually discussed):\n"
+            for s in outlier_sources[:10]:
+                title = s.get('title', '')
+                subtopics = s.get('subtopics', '') or s.get('subtopics_covered', '')
+                insights = s.get('reusable_insights', '')
+                success = s.get('success_criteria', '')
+                if title:
+                    sources_text += f"- \"{title}\"\n"
+                    if subtopics:
+                        sources_text += f"  Topics covered: {subtopics}\n"
+                    if insights:
+                        sources_text += f"  Key insights: {insights}\n"
+                    if success:
+                        sources_text += f"  Success criteria: {success}\n"
+
+        saturated_text = ""
+        if theme_data:
+            saturated = theme_data.get('saturated_angles', [])
+            if saturated:
+                saturated_text = f"\nSATURATED ANGLES (common in the market — include them as subtopics if the outlier videos covered them; do NOT auto-exclude):\n"
+                saturated_text += "\n".join(f"- {a}" for a in saturated)
+                saturated_text += "\n"
+
         prompt = f"""
 Create NEW YouTube video subtopics for "{topic}".
 
+{sources_text}
 {theme_text}
-
+{saturated_text}
 SELECTED ANGLES (USE AS PERSPECTIVE/FLAVOR):
 {angles_text}
 
@@ -262,7 +320,7 @@ User notes: {notes}
 IMPORTANT: The following subtopics have already been selected. Generate DIFFERENT subtopics that complement these:
 {covered_topics}
 
-Generate 8-10 NEW subtopics that:
+Generate 15-20 NEW subtopics that:
 - Do NOT repeat the already selected topics above
 - Complement and expand on the selected topics
 - Support the chosen angles

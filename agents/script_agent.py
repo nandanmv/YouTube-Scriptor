@@ -10,10 +10,56 @@ class ScriptAgent(BaseAgent):
         super().__init__(use_database=use_database, ai_model=ai_model)
         self.model = ai_model or config.SCRIPT_MODEL
 
+    def _build_web_research_handoff_text(self, selected_title: str = None, selected_topics: list = None,
+                                         research_packet: dict = None) -> str:
+        """Render the web-selected research handoff as a prompt section."""
+        if not (selected_title or selected_topics or research_packet):
+            return ""
+
+        lines = ["WEB RESEARCH HANDOFF (treat this as the source of truth):"]
+
+        if selected_title:
+            lines.append(f"- Chosen title: {selected_title}")
+
+        if selected_topics:
+            lines.append("- Chosen topics:")
+            for item in selected_topics:
+                if isinstance(item, dict):
+                    label = item.get("title") or item.get("name") or item.get("text") or str(item)
+                else:
+                    label = str(item)
+                lines.append(f"  - {label}")
+
+        if research_packet and isinstance(research_packet, dict):
+            summary = research_packet.get("research_summary", {})
+            supporting_material = research_packet.get("supporting_material", [])
+            if summary:
+                lines.append("- Research summary:")
+                if summary.get("main_discussion"):
+                    lines.append(f"  - Main discussion: {summary.get('main_discussion')}")
+                if summary.get("recommended_story_spine"):
+                    lines.append(f"  - Recommended story spine: {summary.get('recommended_story_spine')}")
+                for point in summary.get("strongest_evidence", [])[:5]:
+                    lines.append(f"  - Evidence: {point}")
+            if supporting_material:
+                lines.append("- Supporting material:")
+                for item in supporting_material[:5]:
+                    lines.append(
+                        f"  - {item.get('title', '')} ({item.get('source', '')}) {item.get('url', '')}".rstrip()
+                    )
+
+        return "\n".join(lines)
+
     def run(self, topic: str, angles: list, hook: dict, trailer: dict,
             structure: dict, research_insights: dict, notes: str, outro: str = None,
             regeneration_feedback: dict = None, previous_script: str = None,
-            duration: int = None, youtube_sources: list = None) -> str:
+            duration: int = None, youtube_sources: list = None,
+            selected_title: str = None, selected_topics: list = None,
+            research_packet: dict = None,
+            selected_hook_script: str = None,
+            talking_points: dict = None,
+            shorts_segments: list = None,
+            selected_thumbnail: dict = None) -> str:
         """
         Generate complete word-for-word script.
 
@@ -41,7 +87,9 @@ class ScriptAgent(BaseAgent):
         print(f"[*] ScriptAgent writing complete script (target: {duration} min)...")
 
         script = self._write_script(topic, angles, hook, trailer, structure, research_insights, notes, outro,
-                                    regeneration_feedback, previous_script, duration, youtube_sources)
+                                    regeneration_feedback, previous_script, duration, youtube_sources,
+                                    selected_title, selected_topics, research_packet,
+                                    selected_hook_script, talking_points, shorts_segments, selected_thumbnail)
 
         word_count = len(script.split())
         estimated_duration = word_count / config.SCRIPT_WORDS_PER_MINUTE
@@ -49,19 +97,16 @@ class ScriptAgent(BaseAgent):
         return script
 
     def _write_script(self, topic, angles, hook, trailer, structure, research_insights, notes, outro,
-                     regeneration_feedback, previous_script, duration, youtube_sources) -> str:
+                     regeneration_feedback, previous_script, duration, youtube_sources,
+                     selected_title, selected_topics, research_packet,
+                     selected_hook_script=None, talking_points=None, shorts_segments=None,
+                     selected_thumbnail=None) -> str:
         """Generate full script with duration control and source citations"""
 
         import json
 
         # Calculate target word count based on duration
         target_words = duration * config.SCRIPT_WORDS_PER_MINUTE
-
-        # Build angles text
-        angles_text = "\n".join([
-            f"- {a['angle_name']}: {a['description']}"
-            for a in angles
-        ])
 
         # Build regeneration feedback section
         regeneration_section = ""
@@ -126,37 +171,135 @@ Suggestions: {'; '.join(regeneration_feedback['improvement_suggestions'])}
                     else:
                         research_text += f"- {insights}\n"
 
+        research_handoff_text = self._build_web_research_handoff_text(
+            selected_title=selected_title,
+            selected_topics=selected_topics,
+            research_packet=research_packet,
+        )
+
+        # Build talking points blueprint when provided from Hooks & Talking Points step
+        talking_points_text = ""
+        if talking_points and isinstance(talking_points, dict):
+            sections = talking_points.get("sections", [])
+            if sections:
+                lines = ["APPROVED TALKING POINTS OUTLINE (follow this structure exactly):"]
+                for sec in sections:
+                    lines.append(f"\n## {sec.get('title', 'Section')}")
+                    for sub in sec.get("subsections", []):
+                        lines.append(f"  ### {sub.get('title', 'Subsection')}")
+                        for b in sub.get("bullets", []):
+                            lines.append(f"    - {b}")
+                talking_points_text = "\n".join(lines)
+
+        hook_open = selected_hook_script or hook.get('text', '')
+        outro_text = outro or "Ask viewers to subscribe, comment with questions, and mention consulting services if relevant to speaker's notes."
+
+        # Build thumbnail context section
+        thumbnail_context = ""
+        if selected_thumbnail and isinstance(selected_thumbnail, dict):
+            thumbnail_context = (
+                "THUMBNAIL CONCEPT (use this to align the hook's visual language and opening energy):\n"
+                f"  Visual: {selected_thumbnail.get('visual_concept', '')}\n"
+                f"  Text overlay: {selected_thumbnail.get('text_overlay', '')}\n"
+                f"  Color/mood: {selected_thumbnail.get('color_scheme', '')}\n"
+                f"  Emotion target: {selected_thumbnail.get('emotion_target', '')}"
+            )
+
+        # Build transcript grounding section from outlier video excerpts
+        transcript_grounding = ""
+        if youtube_sources:
+            lines = ["OUTLIER VIDEO TRANSCRIPTS (ground your examples, data points, and stories in these real videos):"]
+            for i, src in enumerate(youtube_sources[:8], 1):
+                title = src.get("title", f"Video {i}")
+                views = src.get("views", 0)
+                excerpt = src.get("transcript_excerpt", "").strip()
+                subtopics = src.get("subtopics_covered", "").strip()
+                insights = src.get("reusable_insights", "").strip()
+                lines.append(f"\n--- Video {i}: \"{title}\" ({views:,} views)")
+                if subtopics:
+                    lines.append(f"Subtopics covered: {subtopics}")
+                if insights:
+                    lines.append(f"Reusable insights: {insights}")
+                if excerpt:
+                    lines.append(f"Transcript excerpt:\n{excerpt[:1500]}")
+                lines.append("---")
+            transcript_grounding = "\n".join(lines)
+
+        # Build shorts segments guide from HTP output
+        shorts_guide = ""
+        if shorts_segments:
+            lines = [f"SHORTS TO EXTRACT ({len(shorts_segments)} planned — embed these in the main script using [SHORT START]/[SHORT END] markers):"]
+            for i, seg in enumerate(shorts_segments, 1):
+                lines.append(f"\nShort {i}: \"{seg.get('title', '')}\"")
+                lines.append(f"  Source section: {seg.get('source_section', '')}")
+                lines.append(f"  Opening hook: {seg.get('hook_line', '')}")
+                lines.append(f"  Script: {seg.get('script', '')[:500]}")
+            shorts_guide = "\n".join(lines)
+        else:
+            shorts_guide = "SHORTS: Include 2-3 self-contained [SHORT START: \"Title\"] ... [SHORT END] segments within the main script."
+
+        # Load checklist
+        checklist_text = json.dumps({
+            "Hook": ["Grabs attention in 3-5 seconds", "Creates curiosity gap", "Relevant to topic"],
+            "Structure": ["Clear flow", "Smooth section transitions", "Curiosity gaps placed strategically", "Payoffs delivered", "Strong conclusion"],
+            "Content": ["Factually accurate", "Easy to understand", "Value-dense", "No fluff", "No repetitions"],
+            "Engagement": ["Pattern interrupts every 60 seconds", "Open loops resolved", "Maintains energy", "Optimized for retention", "Social proof elements"],
+            "Production": ["B-roll suggestions clear", "SFX appropriate", "Pacing varies"],
+            "CTA": ["Clear call-to-action", "Natural placement", "Compelling reason"],
+        }, indent=2)
+        try:
+            import os as _os
+            checklist_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "checklists", "script_checklist.json")
+            with open(checklist_path) as _f:
+                checklist_text = _f.read()
+        except Exception:
+            pass
+
         prompt = f"""Write a complete, word-for-word YouTube script for "{topic}".
 
 CONSTRAINTS:
-- Duration: {duration} minutes (~{target_words} words of spoken content)
+- Duration: HARD MAXIMUM {duration} minutes (~{target_words} words of spoken content)
 - Audience: Business professionals
-- Reading level: 10th grade (short sentences, clear examples, no jargon)
+- Reading level: 10th grade — short sentences, concrete examples, zero jargon
+- Shorts: 2-3 self-contained clips must be embeddable using [SHORT START]/[SHORT END] markers
 
-THE SPEAKER'S NOTES (write in THEIR voice — preserve their stories, examples, and personality):
-{notes}
+FINAL VIDEO TITLE:
+{selected_title or topic}
 
-ANGLES TO BLEND:
-{angles_text}
+THE CREATOR'S NOTES (write in THEIR voice — preserve their stories, examples, and personality):
+{notes or "None provided."}
 
-HOOK (open with this): {hook['text']}
-INTRO (after hook): {trailer['text']}
+HOOK / OPENING (use this word-for-word as your opening — do NOT rewrite it):
+{hook_open}
 
-{structure_text}
-{research_text}
+{thumbnail_context}
+
+{talking_points_text if talking_points_text else structure_text}
+
+{transcript_grounding}
+
+{shorts_guide}
+
+{research_handoff_text}
 {youtube_sources_text}
-OUTRO: {outro or "Ask viewers to subscribe, comment with questions, and mention consulting services if relevant to speaker's notes."}
+OUTRO (use this word-for-word):
+{outro_text}
 {regeneration_section}
-{SCRIPTWRITER_QUALITY_GUIDE}
+
+QUALITY CHECKLIST (every section must satisfy these — score yourself against each category before finishing):
+{checklist_text}
 
 SCRIPT FORMAT:
-Write the script as the speaker would actually say it. Use section headers with timestamps (e.g., "HOOK (0:00-0:08)").
+- Section headers with timestamps: "## SECTION TITLE (0:00)"
+- [SHORT START: "Short Title"] ... [SHORT END] — each short must be 60 seconds max, fully self-contained (no "as I mentioned")
+- Energy markers: [ENERGY: HIGH/MEDIUM/LOW]
+- Pattern interrupt every ~60 seconds: [PATTERN INTERRUPT: camera switch / text overlay / pause]
+- B-roll inline: [B-ROLL: description]
+- After the complete spoken script, add these SEPARATE sections (not spoken):
+  1. SHORTS SUMMARY — title, hook, why it works as a short
+  2. PRODUCTION NOTES — B-roll, SFX, camera directions
 
-After the complete spoken script, add these SEPARATE sections at the end:
-1. KEY URL SUGGESTIONS FOR B-ROLL - specific URLs and stock footage search terms
-2. PRODUCTION NOTES - B-roll suggestions, SFX cues, camera directions, pacing notes, pattern interrupts
-
-Keep production notes OUT of the spoken script body — they go at the end only."""
+Keep production notes and shorts summary OUT of the spoken script body — append them at the end only."""
 
         try:
             return ScriptGenerationUtils.call_litellm(prompt, model=self.model,

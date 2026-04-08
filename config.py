@@ -66,3 +66,7 @@ APP_SESSION_SECRET = os.getenv("APP_SESSION_SECRET", APP_LOGIN_PASSWORD).strip()
 APP_SESSION_TTL_HOURS = int(os.getenv("APP_SESSION_TTL_HOURS", "24"))
 APP_COOKIE_SECURE = os.getenv("APP_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
 APP_COOKIE_NAME = os.getenv("APP_COOKIE_NAME", "yt_strategy_session").strip() or "yt_strategy_session"
+
+# YouTube Data API v3
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "").strip()
+YOUTUBE_API_TIMEOUT = int(os.getenv("YOUTUBE_API_TIMEOUT", "20"))

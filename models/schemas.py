@@ -73,6 +73,7 @@ class SearchJob(BaseModel):
     webhook_url: Optional[str] = None
     error_message: Optional[str] = None
     result_count: Optional[int] = None
+    job_type: Optional[str] = "outlier"
 
     class Config:
         json_schema_extra = {
@@ -140,6 +141,7 @@ class Insight(BaseModel):
     video_url: str
     video_title: str
     success_criteria: List[str]
+    subtopics_covered: Optional[str] = None
     reusable_insights: List[str]
     ultimate_titles: List[str]
     alternate_hooks: List[str]
@@ -194,9 +196,24 @@ class ThemeRequest(BaseModel):
     videos: Optional[List[Dict[str, Any]]] = None
 
 
+class ResearchRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=200)
+    videos: Optional[List[Dict[str, Any]]] = None
+    theme_data: Optional[Dict[str, Any]] = None
+    custom_links: str = Field(default="")
+    custom_notes: str = Field(default="")
+
+
 class AnglesRequest(BaseModel):
     topic: str = Field(..., min_length=1, max_length=200)
     videos: Optional[List[Dict[str, Any]]] = None
+
+
+class HooksTalkingPointsRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=200)
+    title: str = ""
+    topics: List[str] = []
+    custom_notes: str = ""
 
 
 class CreateScriptRequest(BaseModel):
@@ -206,6 +223,15 @@ class CreateScriptRequest(BaseModel):
     top_n_outliers: Optional[int] = Field(default=None, ge=1, le=50)
     strategy: Optional[str] = None
     selected_videos: Optional[List[Dict[str, Any]]] = None
+    selected_title: Optional[str] = None
+    selected_topics: Optional[List[str]] = None
+    research_packet: Optional[Dict[str, Any]] = None
+    # Hooks & Talking Points handoff
+    selected_hook_script: Optional[str] = None
+    talking_points: Optional[Dict[str, Any]] = None
+    outro: Optional[str] = None
+    shorts_segments: Optional[List[Dict[str, Any]]] = None
+    selected_thumbnail: Optional[Dict[str, Any]] = None
 
 
 class QuickScriptRequest(BaseModel):
