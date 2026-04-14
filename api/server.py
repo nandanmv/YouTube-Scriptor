@@ -99,6 +99,8 @@ app_trend_jobs = {}
 app_trend_jobs_lock = threading.Lock()
 app_create_jobs = {}
 app_create_jobs_lock = threading.Lock()
+app_research_jobs = {}
+app_research_jobs_lock = threading.Lock()
 PUBLIC_PATHS = {"/health", "/favicon.ico", "/login", "/api/v1/auth/login", "/api/v1/auth/logout"}
 HTML_PATHS = {"/", "/app", "/home", "/outliers", "/compare", "/docs"}
 
@@ -130,7 +132,7 @@ def _build_session_token() -> str:
 
 def _is_authenticated(request: Request) -> bool:
     if not _auth_configured():
-        return False
+        return True  # No auth configured — allow all requests
 
     token = request.cookies.get(APP_COOKIE_NAME)
     if not token or "." not in token:
@@ -900,12 +902,102 @@ async def app_theme_analysis(request: ThemeRequest):
     return result
 
 
+async def run_app_research_job(job_id: str, request: ResearchRequest):
+    """Background task for research analysis."""
+    def _update(**kw):
+        with app_research_jobs_lock:
+            if job_id in app_research_jobs:
+                app_research_jobs[job_id].update(kw)
+                app_research_jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+    def _log(msg: str):
+        with app_research_jobs_lock:
+            job = app_research_jobs.get(job_id)
+            if job:
+                job.setdefault("logs", []).append(msg)
+                job["updated_at"] = datetime.now().isoformat()
+
+    try:
+        loop = asyncio.get_event_loop()
+        _log(f"[*] Starting research for '{request.topic}'...")
+
+        theme_data = request.theme_data
+        if not theme_data and request.videos:
+            try:
+                _log("[*] Running theme analysis...")
+                theme_agent = ThemeAgent()
+                theme_result = await loop.run_in_executor(
+                    None,
+                    partial(theme_agent.run, topic=request.topic, videos=request.videos),
+                )
+                if theme_result and "themes" in theme_result and "error" not in theme_result:
+                    theme_data = theme_result.get("themes", {})
+                    try:
+                        store.save_theme(request.topic, theme_data)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        _log("[*] Fetching transcripts and synthesizing research...")
+        agent = ResearcherAgent()
+        runner = partial(
+            agent.run,
+            topic=request.topic,
+            videos=request.videos,
+            theme_data=theme_data,
+            custom_links=request.custom_links,
+            custom_notes=request.custom_notes,
+        )
+        result = await loop.run_in_executor(None, runner)
+        result["theme_data"] = theme_data or {}
+
+        if result.get("best_titles") or result.get("high_level_topics"):
+            try:
+                store.save_research(request.topic, result)
+            except Exception:
+                pass
+
+        _log("[+] Research complete.")
+        _update(status="completed", result=result)
+    except Exception as exc:
+        _update(status="failed", error=str(exc))
+        _log(f"[!] Research failed: {exc}")
+
+
+@app.post("/api/v1/app/research/start")
+async def app_research_start(request: ResearchRequest, background_tasks: BackgroundTasks):
+    """Start async research analysis and return a job id."""
+    job_id = str(uuid.uuid4())
+    with app_research_jobs_lock:
+        app_research_jobs[job_id] = {
+            "job_id": job_id,
+            "status": "processing",
+            "topic": request.topic,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "logs": [],
+            "result": None,
+            "error": None,
+        }
+    background_tasks.add_task(run_app_research_job, job_id, request)
+    return {"job_id": job_id, "status": "processing", "topic": request.topic}
+
+
+@app.get("/api/v1/app/research/jobs/{job_id}")
+async def app_research_job_status(job_id: str):
+    """Poll research job status."""
+    with app_research_jobs_lock:
+        job = app_research_jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Research job not found")
+        return job
+
+
 @app.post("/api/v1/app/research")
 async def app_research_analysis(request: ResearchRequest):
-    """Run transcript + social research for the web app."""
+    """Legacy sync endpoint — kept for compatibility."""
     loop = asyncio.get_event_loop()
-
-    # Auto-run theme analysis if caller didn't pass theme_data
     theme_data = request.theme_data
     if not theme_data and request.videos:
         try:
@@ -922,7 +1014,6 @@ async def app_research_analysis(request: ResearchRequest):
                     pass
         except Exception:
             pass
-
     agent = ResearcherAgent()
     runner = partial(
         agent.run,
@@ -933,16 +1024,12 @@ async def app_research_analysis(request: ResearchRequest):
         custom_notes=request.custom_notes,
     )
     result = await loop.run_in_executor(None, runner)
-    # Always surface theme_data at the top level so the UI can render it
     result["theme_data"] = theme_data or {}
-
-    # Auto-save research results for later reuse
     if result.get("best_titles") or result.get("high_level_topics"):
         try:
             store.save_research(request.topic, result)
         except Exception:
             pass
-
     return result
 
 

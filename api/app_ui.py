@@ -265,6 +265,7 @@ def render_app_ui() -> str:
       padding: 16px;
       background: rgba(12, 19, 28, 0.88);
       border: 1px solid rgba(158, 178, 198, 0.08);
+      text-align: left;
     }
 
     .tag {
@@ -416,9 +417,17 @@ def render_app_ui() -> str:
       outline: none;
       padding: 2px 4px;
       width: 100%;
+      border-radius: 0;
+      box-shadow: none;
     }
     .tp-sec-title:focus, .tp-sub-title:focus, .tp-bullet-input:focus {
       border-bottom-color: rgba(99,179,237,0.5);
+      box-shadow: none;
+    }
+    .tp-sec-title:invalid, .tp-sub-title:invalid, .tp-bullet-input:invalid,
+    .tp-sec-title:-moz-ui-invalid, .tp-sub-title:-moz-ui-invalid, .tp-bullet-input:-moz-ui-invalid {
+      background: transparent;
+      box-shadow: none;
     }
 
     .mono {
@@ -1303,6 +1312,27 @@ def render_app_ui() -> str:
       `;
     }
 
+    function renderThumbnailPicker(titles, st) {
+      const selectedTitleObj = titles.find(t => t.title === st.selectedResearchTitle);
+      if (!selectedTitleObj) return '<p class="meta">Select a title above to see thumbnail concepts.</p>';
+      const thumbs = Array.isArray(selectedTitleObj.thumbnails) ? selectedTitleObj.thumbnails : [];
+      if (!thumbs.length) return '<p class="meta">No thumbnail concepts for this title.</p>';
+      const ti = titles.indexOf(selectedTitleObj);
+      return '<div class="checkboxes">' + thumbs.map((th, thi) => {
+        const thumbKey = ti + "-" + thi;
+        const isSel = st.selectedThumbnail && st.selectedThumbnail._key === thumbKey;
+        const border = isSel ? "rgba(99,179,237,0.4)" : "rgba(99,179,237,0.1)";
+        const bg = isSel ? "rgba(22,33,45,0.9)" : "rgba(22,33,45,0.4)";
+        return '<label class="checkbox-row" style="border:1px solid ' + border + ';background:' + bg + ';border-radius:8px;transition:all 0.2s">'
+          + '<input type="radio" name="thumbnail-select" data-title-idx="' + ti + '" data-thumb-idx="' + thi + '" ' + (isSel ? "checked" : "") + '>'
+          + '<div>'
+          + '<div style="font-size:0.88rem;font-weight:700;color:#63b3ed;margin-bottom:3px">' + escapeHtml(th.text_overlay || "") + '</div>'
+          + '<div style="font-size:0.82rem;color:#a0aec0;margin-bottom:2px">' + escapeHtml(th.visual_concept || "") + '</div>'
+          + '<div style="font-size:0.76rem;color:#718096">Mood: ' + escapeHtml(th.color_scheme || "") + ' · Emotion: ' + escapeHtml(th.emotion_target || "") + '</div>'
+          + '</div></label>';
+      }).join("") + '</div>';
+    }
+
     function renderResearch(result) {
       if (!result || result.error) {
         return `<p class="meta">${escapeHtml(result?.error || "Research analysis failed.")}</p>`;
@@ -1320,39 +1350,23 @@ def render_app_ui() -> str:
         <div class="cards">
           <div class="card">
             <h3 class="title">Title Options</h3>
-            <p class="meta" style="margin-bottom:12px">Select a title, then pick a thumbnail concept below it.</p>
+            <p class="meta" style="margin-bottom:12px">Select a title.</p>
             <div class="checkboxes">
               ${titles.length ? titles.map((item, ti) => {
-                const thumbs = Array.isArray(item.thumbnails) ? item.thumbnails : [];
                 const titleVal = item.title || "";
                 const isTitleSelected = state.selectedResearchTitle === titleVal;
                 return `
-                <div class="title-option-block" style="margin-bottom:16px;padding:12px;border-radius:8px;border:1px solid rgba(158,178,198,${isTitleSelected ? "0.35" : "0.12"});background:rgba(22,33,45,${isTitleSelected ? "0.8" : "0.4"});transition:all 0.2s">
-                  <label class="checkbox-row" style="margin-bottom:${thumbs.length ? "10px" : "0"}">
-                    <input type="radio" name="research-title" value="${escapeHtml(titleVal)}" ${isTitleSelected ? "checked" : ""}>
-                    <h3 class="title" style="margin:0">${escapeHtml(titleVal || "Title option")}</h3>
-                  </label>
-                  ${thumbs.length ? `
-                  <div class="thumbnail-options" style="margin-left:24px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">
-                    ${thumbs.map((th, thi) => {
-                      const thumbKey = `${ti}-${thi}`;
-                      const isSelected = state.selectedThumbnail && state.selectedThumbnail._key === thumbKey;
-                      return `
-                      <label style="cursor:pointer;width:calc(50% - 5px);box-sizing:border-box;padding:10px;border-radius:6px;border:1px solid rgba(99,179,237,${isSelected ? "0.5" : "0.2"});background:rgba(99,179,237,${isSelected ? "0.1" : "0.04"});transition:all 0.2s">
-                        <div style="display:flex;align-items:flex-start;gap:8px;text-align:left">
-                          <input type="radio" name="thumbnail-select" data-title-idx="${ti}" data-thumb-idx="${thi}" style="margin-top:3px;flex-shrink:0" ${isSelected ? "checked" : ""}>
-                          <div>
-                            <div style="font-size:0.8rem;font-weight:700;color:#63b3ed;letter-spacing:0.05em;margin-bottom:4px">${escapeHtml(th.text_overlay || "")}</div>
-                            <div style="font-size:0.78rem;color:#a0aec0;margin-bottom:4px">${escapeHtml(th.visual_concept || "")}</div>
-                            <div style="font-size:0.75rem;color:#718096"><span style="opacity:0.7">Mood:</span> ${escapeHtml(th.color_scheme || "")} &nbsp;·&nbsp; <span style="opacity:0.7">Emotion:</span> ${escapeHtml(th.emotion_target || "")}</div>
-                          </div>
-                        </div>
-                      </label>`;
-                    }).join("")}
-                  </div>` : ""}
-                </div>`;
+                <label class="checkbox-row" style="border:1px solid rgba(158,178,198,${isTitleSelected ? "0.3" : "0.07"});background:rgba(22,33,45,${isTitleSelected ? "0.9" : "0.4"});border-radius:8px;transition:all 0.2s">
+                  <input type="radio" name="research-title" value="${escapeHtml(titleVal)}" ${isTitleSelected ? "checked" : ""}>
+                  <span style="font-size:0.97rem;font-weight:${isTitleSelected ? "700" : "400"}">${escapeHtml(titleVal || "Title option")}</span>
+                </label>`;
               }).join("") : '<p class="meta">No title options returned.</p>'}
             </div>
+          </div>
+          <div class="card">
+            <h3 class="title">Thumbnail Concepts</h3>
+            <p class="meta" style="margin-bottom:12px">Pick one concept for your thumbnail.</p>
+            ${renderThumbnailPicker(titles, state)}
           </div>
           <div class="card">
             <h3 class="title">Topic Options</h3>
@@ -1485,7 +1499,7 @@ def render_app_ui() -> str:
 
           <div class="card">
             <h3 class="title">Talking Points Outline</h3>
-            <p class="meta" style="margin-bottom:12px">Check/uncheck sections to include or exclude. Edit titles and bullets inline. Reorder with ↑↓. Add or remove sections, subsections, and bullets.</p>
+            <p class="meta" style="margin-bottom:12px">Edit the outline as plain text.</p>
             <div id="htp-tp-editor">
               ${renderTalkingPointsEditor(data.talking_points)}
             </div>
@@ -1513,56 +1527,45 @@ def render_app_ui() -> str:
       `;
     }
 
-    function renderTalkingPointsEditor(tp) {
+    function tpToText(tp) {
       const sections = (tp && tp.sections) ? tp.sections : [];
-      if (!sections.length) {
-        return `<p class="meta" style="margin-bottom:8px">No sections yet.</p>
-          <button class="btn-add tp-add-section">+ Add Section</button>`;
+      return sections.map(sec => {
+        const prefix = sec._excluded ? "~# " : "# ";
+        const lines = [prefix + (sec.title || "Section")];
+        (sec.subsections || []).forEach(sub => {
+          lines.push("  " + (sub.title || "Subsection"));
+          (sub.bullets || []).forEach(b => { if (b) lines.push("    - " + b); });
+        });
+        return lines.join("\n");
+      }).join("\n\n");
+    }
+
+    function textToTp(text) {
+      const lines = text.split("\n");
+      const sections = [];
+      let sec = null, sub = null;
+      for (const raw of lines) {
+        const line = raw.trimEnd();
+        if (!line.trim()) continue;
+        if (line.startsWith("~# ") || line.startsWith("# ")) {
+          const excluded = line.startsWith("~");
+          sec = { title: line.replace(/^~?# ?/, "").trim(), subsections: [], _excluded: excluded };
+          sections.push(sec); sub = null;
+        } else if (line.startsWith("    - ") && sub) {
+          sub.bullets.push(line.substring(6).trim());
+        } else if (line.startsWith("  ") && !line.startsWith("   ") && sec) {
+          sub = { title: line.trim(), bullets: [] };
+          sec.subsections.push(sub);
+        }
       }
+      return { sections };
+    }
+
+    function renderTalkingPointsEditor(tp) {
+      const text = tpToText(tp);
       return `
-        ${sections.map((sec, si) => {
-          const excluded = sec._excluded || false;
-          const borderColor = excluded ? "rgba(245,101,101,0.25)" : "rgba(99,179,237,0.2)";
-          const bg = excluded ? "rgba(245,101,101,0.04)" : "rgba(22,33,45,0.5)";
-          return `
-          <div class="tp-section-block" style="margin-bottom:10px;border:1px solid ${borderColor};border-radius:8px;padding:10px 12px;background:${bg};opacity:${excluded ? 0.6 : 1}">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              <input type="checkbox" class="tp-sec-toggle" data-si="${si}" ${excluded ? "" : "checked"} title="Include in script" style="width:auto;margin:0;cursor:pointer;flex-shrink:0">
-              <input type="text" class="tp-sec-title" data-si="${si}" value="${escapeHtml(sec.title || "")}" placeholder="Section title" style="flex:1;font-size:0.92rem;font-weight:600">
-              <div style="display:flex;gap:3px;flex-shrink:0">
-                ${si > 0 ? `<button class="btn-icon tp-sec-up" data-si="${si}" title="Move up">↑</button>` : ""}
-                ${si < sections.length - 1 ? `<button class="btn-icon tp-sec-dn" data-si="${si}" title="Move down">↓</button>` : ""}
-                <button class="btn-icon btn-danger tp-sec-del" data-si="${si}" title="Remove section">✕</button>
-              </div>
-            </div>
-            <div style="margin-left:22px">
-              ${(sec.subsections || []).map((sub, subi) => `
-                <div style="margin-bottom:8px;padding:7px 10px;border-radius:6px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">
-                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-                    <input type="text" class="tp-sub-title" data-si="${si}" data-subi="${subi}" value="${escapeHtml(sub.title || "")}" placeholder="Subsection title" style="flex:1;font-size:0.85rem;color:rgba(210,225,240,0.85)">
-                    <div style="display:flex;gap:3px;flex-shrink:0">
-                      ${subi > 0 ? `<button class="btn-icon tp-sub-up" data-si="${si}" data-subi="${subi}" title="Move up">↑</button>` : ""}
-                      ${subi < (sec.subsections || []).length - 1 ? `<button class="btn-icon tp-sub-dn" data-si="${si}" data-subi="${subi}" title="Move down">↓</button>` : ""}
-                      <button class="btn-icon btn-danger tp-sub-del" data-si="${si}" data-subi="${subi}" title="Remove subsection">✕</button>
-                    </div>
-                  </div>
-                  <div style="margin-left:8px">
-                    ${(sub.bullets || []).map((b, bi) => `
-                      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                        <span style="color:#4a5568;flex-shrink:0">•</span>
-                        <input type="text" class="tp-bullet-input" data-si="${si}" data-subi="${subi}" data-bi="${bi}" value="${escapeHtml(b || "")}" placeholder="Talking point..." style="flex:1;font-size:0.82rem;color:#a0aec0">
-                        <button class="btn-icon btn-danger tp-bul-del" data-si="${si}" data-subi="${subi}" data-bi="${bi}" title="Remove bullet" style="padding:2px 5px">✕</button>
-                      </div>
-                    `).join("")}
-                    <button class="btn-add tp-add-bullet" data-si="${si}" data-subi="${subi}" style="margin-top:4px;font-size:0.75rem">+ bullet</button>
-                  </div>
-                </div>
-              `).join("")}
-              <button class="btn-add tp-add-sub" data-si="${si}" style="margin-top:2px;font-size:0.78rem">+ subsection</button>
-            </div>
-          </div>`;
-        }).join("")}
-        <button class="btn-add tp-add-section" style="margin-top:6px">+ Add Section</button>
+        <p class="meta" style="margin-bottom:6px">Edit freely. Format: <code style="font-size:0.8rem"># Section</code> → <code style="font-size:0.8rem">  Subsection</code> → <code style="font-size:0.8rem">    - bullet</code>. Prefix a section with <code style="font-size:0.8rem">~#</code> to exclude it.</p>
+        <textarea id="tp-text-editor" rows="20" style="width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.84rem;line-height:1.7;white-space:pre">${escapeHtml(text)}</textarea>
       `;
     }
 
@@ -1762,18 +1765,31 @@ def render_app_ui() -> str:
       setStatus("research-status", `Getting titles and topics for "${topic}"...`);
       setOutputHtml("research-output", '<p class="meta">Analyzing outlier videos for best titles and topics...</p>');
       try {
-        const data = await postJson("/api/v1/app/research", {
+        // Start async job
+        const job = await postJson("/api/v1/app/research/start", {
           topic,
           custom_links: sources,
           custom_notes: notes,
           theme_data: state.latestTheme?.themes || null,
           videos
-        }, 600000);
+        });
+        const jobId = job.job_id;
+
+        // Poll until complete
+        let data = null;
+        while (true) {
+          await new Promise(r => setTimeout(r, 3000));
+          const status = await getJson(`/api/v1/app/research/jobs/${encodeURIComponent(jobId)}`);
+          const lastLog = status.logs?.slice(-1)[0] || "";
+          setStatus("research-status", `${lastLog || "Working..."}`);
+          if (status.status === "completed") { data = status.result; break; }
+          if (status.status === "failed") { throw new Error(status.error || "Research failed."); }
+        }
+
         state.latestResearch = data;
         state.selectedResearchTitle = "";
         state.selectedResearchTopics = new Set();
         state.selectedThumbnail = null;
-        // Store theme data for downstream use in Create Script
         if (data.theme_data && Object.keys(data.theme_data).length) {
           state.latestTheme = { topic, themes: data.theme_data };
           syncTopicFields(topic);
@@ -1872,24 +1888,12 @@ def render_app_ui() -> str:
       }
     });
 
-    // Helper: re-render just the talking points editor in-place
-    function refreshTpEditor() {
-      const el = document.getElementById("htp-tp-editor");
-      if (el) el.innerHTML = renderTalkingPointsEditor(state.editedTalkingPoints);
-    }
-
     // Sync hook selection and live edits from HTP output
     document.getElementById("htp-output").addEventListener("change", (event) => {
       if (event.target.matches('input[type="radio"][name="htp-hook"]')) {
         const idx = parseInt(event.target.value, 10);
         const ta = document.querySelector(`.hook-script-editor[data-hook-index="${idx}"]`);
         if (ta) state.selectedHookScript = ta.value;
-      }
-      // Section include/exclude toggle
-      if (event.target.matches(".tp-sec-toggle")) {
-        const si = parseInt(event.target.dataset.si);
-        state.editedTalkingPoints.sections[si]._excluded = !event.target.checked;
-        refreshTpEditor();
       }
     });
 
@@ -1903,64 +1907,8 @@ def render_app_ui() -> str:
       if (event.target.id === "htp-outro-editor") {
         state.editedOutro = event.target.value;
       }
-      // Inline text edits — update state without re-rendering (preserve focus)
-      if (event.target.matches(".tp-sec-title")) {
-        const si = parseInt(event.target.dataset.si);
-        state.editedTalkingPoints.sections[si].title = event.target.value;
-      }
-      if (event.target.matches(".tp-sub-title")) {
-        const si = parseInt(event.target.dataset.si), subi = parseInt(event.target.dataset.subi);
-        state.editedTalkingPoints.sections[si].subsections[subi].title = event.target.value;
-      }
-      if (event.target.matches(".tp-bullet-input")) {
-        const si = parseInt(event.target.dataset.si), subi = parseInt(event.target.dataset.subi), bi = parseInt(event.target.dataset.bi);
-        state.editedTalkingPoints.sections[si].subsections[subi].bullets[bi] = event.target.value;
-      }
-    });
-
-    document.getElementById("htp-output").addEventListener("click", (event) => {
-      const btn = event.target.closest("button");
-      if (!btn) return;
-      const tp = state.editedTalkingPoints;
-      const secs = tp.sections;
-
-      if (btn.matches(".tp-sec-up")) {
-        const si = parseInt(btn.dataset.si);
-        if (si > 0) { [secs[si-1], secs[si]] = [secs[si], secs[si-1]]; refreshTpEditor(); }
-      } else if (btn.matches(".tp-sec-dn")) {
-        const si = parseInt(btn.dataset.si);
-        if (si < secs.length-1) { [secs[si], secs[si+1]] = [secs[si+1], secs[si]]; refreshTpEditor(); }
-      } else if (btn.matches(".tp-sec-del")) {
-        const si = parseInt(btn.dataset.si);
-        secs.splice(si, 1);
-        refreshTpEditor();
-      } else if (btn.matches(".tp-add-section")) {
-        secs.push({ title: "New Section", subsections: [{ title: "Subsection", bullets: ["Talking point"] }] });
-        refreshTpEditor();
-      } else if (btn.matches(".tp-sub-up")) {
-        const si = parseInt(btn.dataset.si), subi = parseInt(btn.dataset.subi);
-        const subs = secs[si].subsections;
-        if (subi > 0) { [subs[subi-1], subs[subi]] = [subs[subi], subs[subi-1]]; refreshTpEditor(); }
-      } else if (btn.matches(".tp-sub-dn")) {
-        const si = parseInt(btn.dataset.si), subi = parseInt(btn.dataset.subi);
-        const subs = secs[si].subsections;
-        if (subi < subs.length-1) { [subs[subi], subs[subi+1]] = [subs[subi+1], subs[subi]]; refreshTpEditor(); }
-      } else if (btn.matches(".tp-sub-del")) {
-        const si = parseInt(btn.dataset.si), subi = parseInt(btn.dataset.subi);
-        secs[si].subsections.splice(subi, 1);
-        refreshTpEditor();
-      } else if (btn.matches(".tp-add-sub")) {
-        const si = parseInt(btn.dataset.si);
-        secs[si].subsections.push({ title: "New Subsection", bullets: ["Talking point"] });
-        refreshTpEditor();
-      } else if (btn.matches(".tp-bul-del")) {
-        const si = parseInt(btn.dataset.si), subi = parseInt(btn.dataset.subi), bi = parseInt(btn.dataset.bi);
-        secs[si].subsections[subi].bullets.splice(bi, 1);
-        refreshTpEditor();
-      } else if (btn.matches(".tp-add-bullet")) {
-        const si = parseInt(btn.dataset.si), subi = parseInt(btn.dataset.subi);
-        secs[si].subsections[subi].bullets.push("");
-        refreshTpEditor();
+      if (event.target.id === "tp-text-editor") {
+        state.editedTalkingPoints = textToTp(event.target.value);
       }
     });
 
