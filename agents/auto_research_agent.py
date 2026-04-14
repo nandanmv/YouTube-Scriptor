@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import config
 from youtube_utils import YouTubeUtility
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.insight_agent import InsightAgent
 from agents.prompts import RESEARCH_SYSTEM, ANGLE_SYNTHESIZER_SYSTEM
 import litellm
@@ -245,7 +245,7 @@ Focus on what's actually working on YouTube right now.
                 timeout=config.DEFAULT_API_TIMEOUT
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = parse_json_response(response.choices[0].message.content)
             angles = result.get("angles", [])
             print(f"[+] Extracted {len(angles)} proven angles from top performers")
             return angles
@@ -301,7 +301,7 @@ Find 5-7 distinct angles that would work well for a new video on this topic.
                 timeout=config.DEFAULT_API_TIMEOUT
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = parse_json_response(response.choices[0].message.content)
             angles = result.get("angles", [])
             print(f"[+] Extracted {len(angles)} proven angles from outliers")
             return angles

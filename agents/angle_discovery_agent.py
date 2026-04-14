@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.outlier_agent import OutlierAgent
 from agents.prompts import RESEARCH_SYSTEM
 import litellm
@@ -79,7 +79,7 @@ Find 5-7 distinct angles.
                 response_format={"type": "json_object"}
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = parse_json_response(response.choices[0].message.content)
             return result.get("angles", [])
         except Exception as e:
             print(f"[!] Angle extraction failed: {e}")

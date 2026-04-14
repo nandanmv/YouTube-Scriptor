@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import HOOK_GENERATOR_SYSTEM
 import litellm
 import config
@@ -133,7 +133,7 @@ Return JSON:
                     content = content[:-3]
                 content = content.strip()
 
-            return json.loads(content)
+            return parse_json_response(content)
         except Exception as e:
             print(f"[!] Hook generation failed: {e}")
             return self._get_default_hooks_and_trailers(topic, angles)

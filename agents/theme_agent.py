@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import THEME_ANALYZER_SYSTEM
 import litellm
 import config
@@ -148,7 +148,7 @@ Return JSON:
                 timeout=config.DEFAULT_API_TIMEOUT
             )
 
-            return json.loads(response.choices[0].message.content)
+            return parse_json_response(response.choices[0].message.content)
         except Exception as e:
             print(f"[!] Theme extraction failed: {e}")
             return {"error": str(e)}

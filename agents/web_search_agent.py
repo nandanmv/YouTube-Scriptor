@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import RESEARCH_SYSTEM
 import litellm
 import config
@@ -121,7 +121,7 @@ Return JSON:
                 timeout=30
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = parse_json_response(response.choices[0].message.content)
             return result.get("insights", [])
         except Exception as e:
             self.console.print(f"[yellow]Insight extraction failed: {e}[/yellow]")

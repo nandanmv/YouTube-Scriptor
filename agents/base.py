@@ -1,8 +1,20 @@
 import os
+import json
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional
 import config
+
+
+def parse_json_response(content: str) -> dict:
+    """Parse JSON from LLM response, stripping markdown code fences if present."""
+    content = (content or "").strip()
+    # Strip ```json ... ``` or ``` ... ``` wrappers
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", content)
+    if match:
+        content = match.group(1).strip()
+    return json.loads(content)
 
 class BaseAgent(ABC):
     """Abstract base class for all agents."""

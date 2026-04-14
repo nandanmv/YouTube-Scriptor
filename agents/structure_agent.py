@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import RESEARCH_SYSTEM
 import litellm
 import config
@@ -70,7 +70,7 @@ Return JSON with structured content including where to place each device:
                 response_format={"type": "json_object"}
             )
 
-            return json.loads(response.choices[0].message.content)
+            return parse_json_response(response.choices[0].message.content)
         except Exception as e:
             print(f"[!] Structure generation failed: {e}")
             return {

@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import ANGLE_SYNTHESIZER_SYSTEM
 import litellm
 import config
@@ -163,7 +163,7 @@ Find 5-7 distinct angles.
                 response_format={"type": "json_object"}
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = parse_json_response(response.choices[0].message.content)
             return result.get("angles", [])
         except Exception as e:
             print(f"[!] Angle extraction failed: {e}")

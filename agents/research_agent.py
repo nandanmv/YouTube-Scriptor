@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import RESEARCH_SYSTEM
 import litellm
 import config
@@ -141,7 +141,7 @@ Return JSON: {{
                 response_format={"type": "json_object"}
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = parse_json_response(response.choices[0].message.content)
             return result.get("subtopics", [])
         except Exception as e:
             print(f"[!] Subtopic research failed: {e}")
@@ -350,7 +350,7 @@ Return JSON: {{
                 response_format={"type": "json_object"}
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = parse_json_response(response.choices[0].message.content)
             return result.get("subtopics", [])
         except Exception as e:
             print(f"[!] Additional subtopic generation failed: {e}")

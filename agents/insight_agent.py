@@ -5,7 +5,7 @@ from typing import Dict, Any
 from rich import print
 import config
 from youtube_utils import YouTubeUtility
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import RESEARCH_SYSTEM
 
 # Silence Pydantic serialization warnings from LiteLLM/Pydantic v2
@@ -68,7 +68,7 @@ class InsightAgent(BaseAgent):
                 timeout=30
             )
             content = response.choices[0].message.content
-            analysis = json.loads(content)
+            analysis = parse_json_response(content)
             
             # Map back to standard structure
             return {

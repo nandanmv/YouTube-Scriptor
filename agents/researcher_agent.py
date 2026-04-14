@@ -13,7 +13,7 @@ import litellm
 import requests
 
 import config
-from agents.base import BaseAgent
+from agents.base import BaseAgent, parse_json_response
 from agents.prompts import RESEARCH_SYSTEM
 from youtube_utils import YouTubeUtility
 
@@ -438,7 +438,7 @@ HARD RULES:
                 response_format={"type": "json_object"},
                 timeout=config.DEFAULT_API_TIMEOUT,
             )
-            return json.loads(response.choices[0].message.content)
+            return parse_json_response(response.choices[0].message.content)
         except Exception as e:
             return {
                 "best_titles": [],
