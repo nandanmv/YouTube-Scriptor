@@ -380,7 +380,7 @@ Return this exact JSON:
 {{
   "best_titles": [
     {{
-      "title": "Creative title that uses the proven SEO keywords and angle from the outliers but with fresh phrasing",
+      "title": "Adaptation of a proven outlier title — use the format/angle to create similar and new titles with same intent, never invent from scratch",
       "thumbnails": [
         {{
           "visual_concept": "2-sentence description of what's visually shown — who/what is in frame, layout, any graphic elements",
@@ -436,16 +436,12 @@ Return this exact JSON:
 }}
 
 HARD RULES:
-- best_titles: EXACTLY 5. Use the proven outlier titles as SEO and angle SIGNALS, not templates to copy. Each title must:
-  (a) keep the core keywords/subject from the outliers (same search intent)
-  (b) use a DIFFERENT structure, hook, or framing than the outlier titles
-  (c) feel fresh — avoid adding just "My Honest" or "Complete" to an existing title
-  Good title variation strategies: lead with a number, flip to a question, add a strong qualifier ("secretly", "actually", "nobody talks about"), use a bold claim, or reframe as a lesson ("What X Taught Me About Y").
+- best_titles: EXACTLY 5. Each title must be a direct adaptation of a proven outlier title — same format and angle, same search intent. Add meaningful variation: a stronger qualifier, a number, a slight reframe, or a tighter hook. Never copy verbatim and never invent from scratch.
 - thumbnails: EXACTLY 5 per title, each visually and emotionally DISTINCT. No two thumbnails should look similar. Text overlay must be punchy, ≤5 words, ALL CAPS.
-- high_level_topics: AT LEAST 10. Sort by video_count descending (topics in more videos first).
-- video_count: count how many different videos in the content map mention this topic (semantic match — "setup" and "installation" are the same topic).
-- subtopics: 3-5 SPECIFIC bullet points. Pull these from the raw transcript excerpts first — look for exact numbers, tool names, comparisons, step names, and concrete details (e.g. "$3/day vs $100/day", "checkpoint every 15 tool calls", "memory.md + SQLite session db"). Pre-analyzed bullets are a fallback only.
-- high_level_topics MUST come from actual video content — do NOT invent topics or use generic descriptions.
+- high_level_topics: Go through EVERY video in the content map. Extract every distinct topic from every video. Group semantically identical topics (e.g. "setup" and "installation" are one topic). Count how many videos each topic appears in. Return ALL topics sorted by video_count descending — cross-video topics (video_count ≥ 2) come first, then single-video topics. Do not cap the list — if there are 20 topics, return 20. Minimum 10.
+- video_count: exact count of how many different videos in the content map mention this topic.
+- subtopics: 3-5 SPECIFIC bullet points pulled from raw transcript excerpts — exact numbers, tool names, comparisons, step names, concrete details. Pre-analyzed bullets are fallback only.
+- high_level_topics MUST come from actual video content — do NOT invent or use generic descriptions.
 - Do NOT use Reddit/X for titles or topics.
 - User notes are supplementary only.
 """
