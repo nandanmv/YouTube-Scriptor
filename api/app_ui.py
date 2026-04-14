@@ -1536,12 +1536,12 @@ def render_app_ui() -> str:
           lines.push("  " + (sub.title || "Subsection"));
           (sub.bullets || []).forEach(b => { if (b) lines.push("    - " + b); });
         });
-        return lines.join("\n");
-      }).join("\n\n");
+        return lines.join("\\n");
+      }).join("\\n\\n");
     }
 
     function textToTp(text) {
-      const lines = text.split("\n");
+      const lines = text.split("\\n");
       const sections = [];
       let sec = null, sub = null;
       for (const raw of lines) {
