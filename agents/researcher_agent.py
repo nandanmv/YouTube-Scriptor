@@ -380,7 +380,7 @@ Return this exact JSON:
 {{
   "best_titles": [
     {{
-      "title": "Adaptation of a proven outlier title — copy its format/angle, never invent from scratch",
+      "title": "Creative title that uses the proven SEO keywords and angle from the outliers but with fresh phrasing",
       "thumbnails": [
         {{
           "visual_concept": "2-sentence description of what's visually shown — who/what is in frame, layout, any graphic elements",
@@ -389,17 +389,35 @@ Return this exact JSON:
           "emotion_target": "curiosity | shock | FOMO | aspiration | relief"
         }},
         {{
-          "visual_concept": "Alternative thumbnail concept for the same title",
+          "visual_concept": "Completely different scene or composition from option 1",
           "text_overlay": "DIFFERENT SHORT TEXT",
-          "color_scheme": "contrasting option",
-          "emotion_target": "different emotion"
+          "color_scheme": "contrasting palette",
+          "emotion_target": "different emotion from option 1"
+        }},
+        {{
+          "visual_concept": "Bold, high-contrast concept — could be a reaction, comparison split-screen, or dramatic close-up",
+          "text_overlay": "PUNCHY TEXT",
+          "color_scheme": "bold accent color",
+          "emotion_target": "shock | urgency"
+        }},
+        {{
+          "visual_concept": "Clean, minimal concept — text-forward with a single strong visual element",
+          "text_overlay": "MINIMAL TEXT",
+          "color_scheme": "clean neutral tones",
+          "emotion_target": "aspiration | curiosity"
+        }},
+        {{
+          "visual_concept": "Story-driven concept — shows a before/after, problem/solution, or human moment",
+          "text_overlay": "STORY TEXT",
+          "color_scheme": "warm or narrative tones",
+          "emotion_target": "empathy | FOMO | relief"
         }}
       ]
     }},
-    {{ "title": "...", "thumbnails": [{{}}, {{}}] }},
-    {{ "title": "...", "thumbnails": [{{}}, {{}}] }},
-    {{ "title": "...", "thumbnails": [{{}}, {{}}] }},
-    {{ "title": "...", "thumbnails": [{{}}, {{}}] }}
+    {{ "title": "...", "thumbnails": [{{}}, {{}}, {{}}, {{}}, {{}}] }},
+    {{ "title": "...", "thumbnails": [{{}}, {{}}, {{}}, {{}}, {{}}] }},
+    {{ "title": "...", "thumbnails": [{{}}, {{}}, {{}}, {{}}, {{}}] }},
+    {{ "title": "...", "thumbnails": [{{}}, {{}}, {{}}, {{}}, {{}}] }}
   ],
   "high_level_topics": [
     {{
@@ -418,8 +436,12 @@ Return this exact JSON:
 }}
 
 HARD RULES:
-- best_titles: EXACTLY 5. Each title MUST be a direct adaptation of a proven outlier title — same format, same angle pattern. No generic titles.
-- thumbnails: EXACTLY 2 per title. Visual concepts must be specific to that title's angle, not generic. Text overlay must be punchy, ≤5 words, ALL CAPS.
+- best_titles: EXACTLY 5. Use the proven outlier titles as SEO and angle SIGNALS, not templates to copy. Each title must:
+  (a) keep the core keywords/subject from the outliers (same search intent)
+  (b) use a DIFFERENT structure, hook, or framing than the outlier titles
+  (c) feel fresh — avoid adding just "My Honest" or "Complete" to an existing title
+  Good title variation strategies: lead with a number, flip to a question, add a strong qualifier ("secretly", "actually", "nobody talks about"), use a bold claim, or reframe as a lesson ("What X Taught Me About Y").
+- thumbnails: EXACTLY 5 per title, each visually and emotionally DISTINCT. No two thumbnails should look similar. Text overlay must be punchy, ≤5 words, ALL CAPS.
 - high_level_topics: AT LEAST 10. Sort by video_count descending (topics in more videos first).
 - video_count: count how many different videos in the content map mention this topic (semantic match — "setup" and "installation" are the same topic).
 - subtopics: 3-5 SPECIFIC bullet points. Pull these from the raw transcript excerpts first — look for exact numbers, tool names, comparisons, step names, and concrete details (e.g. "$3/day vs $100/day", "checkpoint every 15 tool calls", "memory.md + SQLite session db"). Pre-analyzed bullets are a fallback only.
