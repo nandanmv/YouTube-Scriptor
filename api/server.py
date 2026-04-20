@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
 from typing import Optional, List
 import uuid
 from datetime import datetime
@@ -46,6 +47,7 @@ from models.schemas import (
     HooksTalkingPointsRequest,
     CreateScriptRequest,
     QuickScriptRequest,
+    ClipRequest,
     SearchJob,
     Insight,
 )
@@ -60,6 +62,7 @@ from agents.researcher_agent import ResearcherAgent
 from agents.hooks_talking_points_agent import HooksTalkingPointsAgent
 from agents.script_creator_agent import ScriptCreatorAgent
 from agents.quick_script_agent import QuickScriptAgent
+from agents.clip_agent import ClipAgent as ClipAgentWorker
 from api.home_ui import render_home_app
 from api.outliers_ui import render_outliers_app
 from api.app_ui import render_app_ui
@@ -101,6 +104,8 @@ app_create_jobs = {}
 app_create_jobs_lock = threading.Lock()
 app_research_jobs = {}
 app_research_jobs_lock = threading.Lock()
+app_clip_jobs = {}
+app_clip_jobs_lock = threading.Lock()
 PUBLIC_PATHS = {"/health", "/favicon.ico", "/login", "/api/v1/auth/login", "/api/v1/auth/logout"}
 HTML_PATHS = {"/", "/app", "/home", "/outliers", "/compare", "/docs"}
 
@@ -1461,6 +1466,100 @@ async def analyze_shortlist(
         "message": f"Analyzing {len(marked)} marked videos",
         "count": len(marked)
     }
+
+
+# ==================== Clip Endpoints ====================
+
+async def run_app_clip_job(job_id: str, request: ClipRequest):
+    """Background task: download a YouTube clip segment."""
+    def _update(**kw):
+        with app_clip_jobs_lock:
+            if job_id in app_clip_jobs:
+                app_clip_jobs[job_id].update(kw)
+                app_clip_jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+    def _log(msg: str):
+        with app_clip_jobs_lock:
+            job = app_clip_jobs.get(job_id)
+            if job:
+                job.setdefault("logs", []).append(msg)
+                job["updated_at"] = datetime.now().isoformat()
+
+    try:
+        agent = ClipAgentWorker()
+        loop = asyncio.get_event_loop()
+        runner = partial(agent.run, url=request.url, start=request.start, end=request.end,
+                         job_id=job_id, progress_callback=_log)
+        file_path = await loop.run_in_executor(None, runner)
+        if file_path:
+            _update(status="completed", file_path=file_path, filename=os.path.basename(file_path))
+            _log(f"[+] Done: {os.path.basename(file_path)}")
+        else:
+            _update(status="failed", error="Download failed or file not found.")
+            _log("[!] Download failed.")
+    except Exception as exc:
+        _update(status="failed", error=str(exc))
+        _log(f"[!] Error: {exc}")
+
+
+@app.post("/api/v1/app/clip/start")
+async def app_clip_start(request: ClipRequest, background_tasks: BackgroundTasks):
+    """Start a clip download job."""
+    job_id = str(uuid.uuid4())
+    with app_clip_jobs_lock:
+        app_clip_jobs[job_id] = {
+            "job_id": job_id,
+            "status": "processing",
+            "url": request.url,
+            "start": request.start,
+            "end": request.end,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "logs": [],
+            "file_path": None,
+            "filename": None,
+            "error": None,
+        }
+    background_tasks.add_task(run_app_clip_job, job_id, request)
+    return {"job_id": job_id, "status": "processing"}
+
+
+@app.get("/api/v1/app/clip/jobs/{job_id}")
+async def app_clip_status(job_id: str):
+    """Poll clip job status."""
+    with app_clip_jobs_lock:
+        job = app_clip_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Clip job not found")
+    return job
+
+
+@app.get("/api/v1/app/clip/download/{job_id}")
+async def app_clip_download(job_id: str, background_tasks: BackgroundTasks):
+    """Stream the clipped file to the browser then delete it from the server."""
+    with app_clip_jobs_lock:
+        job = app_clip_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Clip job not found")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Clip not ready yet")
+    file_path = job.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Clip file not found on disk")
+
+    def _cleanup():
+        try:
+            os.remove(file_path)
+            console.print(f"[dim]Deleted clip after download: {os.path.basename(file_path)}[/dim]")
+        except Exception:
+            pass
+
+    background_tasks.add_task(_cleanup)
+    return FileResponse(
+        path=file_path,
+        filename=os.path.basename(file_path),
+        media_type="video/mp4",
+    )
 
 
 # ==================== Error Handlers ====================

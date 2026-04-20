@@ -6,6 +6,7 @@ from rich.table import Table
 from agents.teleprompter_formatter import TeleprompterFormatter
 from agents import OutlierAgent, DiscoveryAgent, ScriptCreatorAgent, QuickScriptAgent, AngleFromOutliersAgent
 from agents.theme_agent import ThemeAgent
+from agents.clip_agent import ClipAgent
 import config
 
 # Silence Pydantic serialization warnings from LiteLLM/Pydantic v2
@@ -187,6 +188,9 @@ def main():
 
         console.print("\n  [bold]python3.10 main.py theme \"<topic>\"[/bold]")
         console.print("    → Analyze common themes across all outliers for a topic")
+
+        console.print("\n  [bold]python3.10 main.py clip \"<youtube_url>\" --start \"HH:MM:SS\" --end \"HH:MM:SS\"[/bold]")
+        console.print("    → Download a video segment (requires ffmpeg)")
 
         console.print("\n  [bold]python3.10 main.py serve --port 8000[/bold]")
         console.print("    → Start API server")
@@ -425,9 +429,38 @@ def main():
         else:
             console.print(f"\n[yellow]Resume cancelled or failed.[/yellow]")
 
+    elif command == "clip":
+        if len(args) < 2:
+            console.print("[bold red]Error: No URL provided.[/bold red]")
+            console.print("Usage: [bold]python3.10 main.py clip \"<youtube_url>\" --start \"HH:MM:SS\" --end \"HH:MM:SS\"[/bold]")
+            return
+
+        url = args[1]
+        start = None
+        end = None
+
+        i = 2
+        while i < len(args):
+            if args[i] == "--start" and i + 1 < len(args):
+                start = args[i + 1]; i += 2
+            elif args[i] == "--end" and i + 1 < len(args):
+                end = args[i + 1]; i += 2
+            else:
+                i += 1
+
+        if not start or not end:
+            console.print("[bold red]Error: --start and --end are required.[/bold red]")
+            console.print("Usage: [bold]python3.10 main.py clip \"<youtube_url>\" --start \"00:01:30\" --end \"00:03:45\"[/bold]")
+            return
+
+        agent = ClipAgent()
+        file_path = agent.run(url=url, start=start, end=end)
+        if not file_path:
+            console.print("[yellow]Clip download failed or file not found.[/yellow]")
+
     else:
         console.print(f"[bold red]Unknown command: {command}[/bold red]")
-        console.print("Available commands: [bold]outlier, discovery, create, quick-script, resume, serve[/bold]")
+        console.print("Available commands: [bold]outlier, discovery, create, quick-script, resume, clip, serve[/bold]")
 
 if __name__ == "__main__":
     main()

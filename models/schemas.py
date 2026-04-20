@@ -240,3 +240,9 @@ class QuickScriptRequest(BaseModel):
     duration: int = Field(default=11, ge=1, le=120)
     reading_level: Optional[str] = None
     audience: Optional[str] = None
+
+
+class ClipRequest(BaseModel):
+    url: str = Field(..., min_length=1)
+    start: str = Field(..., min_length=1, max_length=20)
+    end: str = Field(..., min_length=1, max_length=20)
