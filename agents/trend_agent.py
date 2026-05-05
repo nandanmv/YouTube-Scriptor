@@ -16,10 +16,7 @@ class TrendAgent(BaseAgent):
     DEFAULT_SEEDS = [
         "artificial intelligence",
         "ai agents",
-        "llm",
-        "coding",
-        "developer tools",
-        "automation",
+        "ai workflow",
     ]
 
     TERM_PATTERNS = {
@@ -54,7 +51,7 @@ class TrendAgent(BaseAgent):
         "DeepSeek": [r"\bdeepseek\b"],
         "LangChain": [r"\blangchain\b", r"\blanggraph\b"],
         "Hermes": [r"\bhermes\b", r"\bopenhermes\b", r"\bhermes agents?\b", r"\bhermes flow\b"],
-        "AI automation": [r"\bai automation\b", r"\bai workflow(s)?\b", r"\bautomation\b"],
+        "AI automation": [r"\bai automation\b", r"\bai workflow(s)?\b"],
     }
 
     TERM_PRIORITY = [
@@ -91,8 +88,8 @@ class TrendAgent(BaseAgent):
     def run(
         self,
         seeds: Optional[Iterable[str]] = None,
-        lookback_days: int = 14,
-        max_videos_per_seed: int = 15,
+        lookback_days: int = 30,
+        max_videos_per_seed: int = 30,
         ai_only: bool = True,
         max_terms: int = 12,
     ) -> Dict[str, Any]:
@@ -106,7 +103,7 @@ class TrendAgent(BaseAgent):
         self._log(f"[*] TrendAgent scanning {len(seed_terms)} tech seed(s) across the last {lookback_days} day(s)...")
         for idx, seed in enumerate(seed_terms, 1):
             self._log(f"[*] Seed {idx}/{len(seed_terms)}: {seed}")
-            rows = YouTubeUtility.search_recent(seed, max_videos_per_seed, logger=self._log)
+            rows = YouTubeUtility.search_recent(seed, max_videos_per_seed, logger=self._log, published_after=cutoff)
             kept = 0
             for row in rows:
                 video_id = row.get("id")

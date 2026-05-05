@@ -185,8 +185,8 @@ class DiscoveryRequest(BaseModel):
 
 class TrendRequest(BaseModel):
     seeds: Optional[str] = Field(default=None, max_length=500)
-    lookback_days: int = Field(default=14, ge=1, le=90)
-    max_videos_per_seed: int = Field(default=15, ge=5, le=50)
+    lookback_days: int = Field(default=30, ge=1, le=90)
+    max_videos_per_seed: int = Field(default=30, ge=5, le=100)
     ai_only: bool = True
     max_terms: int = Field(default=12, ge=3, le=25)
 
@@ -240,9 +240,3 @@ class QuickScriptRequest(BaseModel):
     duration: int = Field(default=11, ge=1, le=120)
     reading_level: Optional[str] = None
     audience: Optional[str] = None
-
-
-class ClipRequest(BaseModel):
-    url: str = Field(..., min_length=1)
-    start: str = Field(..., min_length=1, max_length=20)
-    end: str = Field(..., min_length=1, max_length=20)

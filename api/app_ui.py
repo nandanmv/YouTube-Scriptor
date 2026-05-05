@@ -526,7 +526,6 @@ def render_app_ui() -> str:
       <a href="#outlier">Outlier</a>
       <a href="#research">Titles &amp; Topics</a>
       <a href="#create">Create</a>
-      <a href="#clip">Clip</a>
     </nav>
 
     <section class="grid">
@@ -536,15 +535,15 @@ def render_app_ui() -> str:
         <form id="trend-form" class="controls">
           <label class="field full">
             <span class="field-label">Seed Topics</span>
-            <textarea id="trend-seeds" placeholder="artificial intelligence, ai agents, llm, coding, automation">artificial intelligence, ai agents, llm, coding, developer tools, automation</textarea>
+            <textarea id="trend-seeds" placeholder="artificial intelligence, ai agents, ai workflow">artificial intelligence, ai agents, ai workflow</textarea>
           </label>
           <label class="field">
             <span class="field-label">Lookback Days</span>
-            <input id="trend-lookback" type="number" min="1" max="90" value="14" placeholder="Days">
+            <input id="trend-lookback" type="number" min="1" max="90" value="30" placeholder="Days">
           </label>
           <label class="field">
             <span class="field-label">Videos Per Seed</span>
-            <input id="trend-limit" type="number" min="5" max="50" value="15" placeholder="Videos per seed">
+            <input id="trend-limit" type="number" min="5" max="100" value="30" placeholder="Videos per seed">
           </label>
           <label class="field">
             <span class="field-label">Max Terms</span>
@@ -697,25 +696,25 @@ def render_app_ui() -> str:
         <div class="output" id="create-output"></div>
       </section>
 
-      <section class="section" id="clip">
+      <section class="section" id="clip-downloader">
         <h2>Clip Downloader</h2>
         <p>Paste a YouTube URL and set start/end timestamps to download just that segment. Requires ffmpeg on the server.</p>
         <form id="clip-form" class="controls">
           <label class="field full">
             <span class="field-label">YouTube URL</span>
-            <input id="clip-url" type="text" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+            <input id="clip-url" type="url" placeholder="https://youtu.be/..." class="full">
           </label>
           <label class="field">
             <span class="field-label">Start Time</span>
-            <input id="clip-start" type="text" placeholder="00:01:30" value="00:00:00">
+            <input id="clip-start" type="text" placeholder="00:00" value="">
           </label>
           <label class="field">
             <span class="field-label">End Time</span>
-            <input id="clip-end" type="text" placeholder="00:03:45" value="00:01:00">
+            <input id="clip-end" type="text" placeholder="00:30" value="">
           </label>
-          <button class="full" type="submit" id="clip-submit">Download Clip</button>
+          <button class="full" type="submit">Download Clip</button>
         </form>
-        <div class="status" id="clip-status">Enter a YouTube URL and timestamps, then click Download Clip.</div>
+        <div class="status" id="clip-status"></div>
         <div class="output" id="clip-output"></div>
       </section>
     </section>
@@ -2073,69 +2072,37 @@ def render_app_ui() -> str:
       }
     });
 
-    // ── Clip Downloader ──────────────────────────────────────────────────────
-
-    let clipPollTimer = null;
-
-    async function pollClipJob(jobId) {
-      try {
-        const job = await getJson(`/api/v1/app/clip/jobs/${jobId}`);
-        const logs = (job.logs || []).join("\\n");
-        if (job.status === "processing") {
-          setStatus("clip-status", "Downloading clip...");
-          setOutputHtml("clip-output", `<pre style="font-size:0.82rem;opacity:0.75">${escapeHtml(logs)}</pre>`);
-        } else if (job.status === "completed") {
-          clearInterval(clipPollTimer);
-          clipPollTimer = null;
-          document.getElementById("clip-submit").disabled = false;
-          setStatus("clip-status", `Clip ready: ${escapeHtml(job.filename || "")}`);
-          setOutputHtml("clip-output",
-            `<pre style="font-size:0.82rem;opacity:0.75">${escapeHtml(logs)}</pre>` +
-            `<a href="/api/v1/app/clip/download/${jobId}" download="${escapeHtml(job.filename || "clip.mp4")}"` +
-            ` style="display:inline-block;margin-top:14px;padding:10px 20px;background:var(--accent);` +
-            `color:#fff;border-radius:10px;text-decoration:none;font-weight:700;">⬇ Download Clip</a>`
-          );
-        } else {
-          clearInterval(clipPollTimer);
-          clipPollTimer = null;
-          document.getElementById("clip-submit").disabled = false;
-          const errMsg = job.error || "Unknown error";
-          setStatus("clip-status", `Clip failed: ${errMsg}`);
-          setOutputHtml("clip-output",
-            `<pre style="font-size:0.82rem;opacity:0.75">${escapeHtml(logs)}</pre>` +
-            `<p class="meta" style="color:#ff6b57">${escapeHtml(errMsg)}</p>`
-          );
-        }
-      } catch (error) {
-        clearInterval(clipPollTimer);
-        clipPollTimer = null;
-        document.getElementById("clip-submit").disabled = false;
-        setStatus("clip-status", error.message || "Polling failed.");
-      }
-    }
-
     document.getElementById("clip-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const url = document.getElementById("clip-url").value.trim();
       const start = document.getElementById("clip-start").value.trim();
       const end = document.getElementById("clip-end").value.trim();
-
-      if (!url) { setStatus("clip-status", "Please enter a YouTube URL."); return; }
-      if (!start || !end) { setStatus("clip-status", "Please enter both start and end timestamps."); return; }
-
-      document.getElementById("clip-submit").disabled = true;
-      setStatus("clip-status", "Starting clip download...");
-      setOutputHtml("clip-output", '<p class="meta">Sending request...</p>');
-
+      if (!url || !start || !end) {
+        setStatus("clip-status", "Fill in YouTube URL, start time, and end time.");
+        return;
+      }
+      setStatus("clip-status", "Downloading clip...");
+      setOutputHtml("clip-output", renderCreateProgress(["[*] Starting clip download..."]));
       try {
-        const job = await postJson("/api/v1/app/clip/start", { url, start, end }, 15000);
-        setStatus("clip-status", "Clip job started. Downloading...");
-        if (clipPollTimer) clearInterval(clipPollTimer);
-        clipPollTimer = setInterval(() => pollClipJob(job.job_id), 2000);
+        const params = new URLSearchParams({ url, start, end });
+        const data = await postJson(`/api/v1/clip/download?${params}`, {}, 120000);
+        const logs = data.logs || [];
+        if (data.success && data.clip_id) {
+          setStatus("clip-status", "Clip ready. Starting download...");
+          setOutputHtml("clip-output", renderCreateProgress([...logs, "[*] Clip ready — browser download starting."]));
+          const a = document.createElement("a");
+          a.href = `/api/v1/clip/${data.clip_id}`;
+          a.download = data.filename || "clip.mp4";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          setStatus("clip-status", `Clip failed: ${data.error || "Download failed or file not found."}`);
+          setOutputHtml("clip-output", renderCreateProgress(logs) + `<p class="meta" style="color:var(--error,#f55)">${escapeHtml(data.error || "Download failed or file not found.")}</p>`);
+        }
       } catch (error) {
-        document.getElementById("clip-submit").disabled = false;
-        setStatus("clip-status", error.message || "Failed to start clip job.");
-        setOutputHtml("clip-output", `<p class="meta">${escapeHtml(error.message || "Failed.")}</p>`);
+        setStatus("clip-status", error.message || "Download failed.");
+        setOutputHtml("clip-output", `<p class="meta">${escapeHtml(error.message || "Download failed.")}</p>`);
       }
     });
 

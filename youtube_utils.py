@@ -128,7 +128,7 @@ class YouTubeUtility:
         return items
 
     @staticmethod
-    def _search_videos_api(query: str, limit: int, order: Optional[str] = None, suppress_errors: bool = False) -> List[Dict[str, Any]]:
+    def _search_videos_api(query: str, limit: int, order: Optional[str] = None, published_after: Optional[str] = None, relevance_language: Optional[str] = None, suppress_errors: bool = False) -> List[Dict[str, Any]]:
         if not YouTubeUtility._youtube_api_enabled():
             return []
 
@@ -140,6 +140,10 @@ class YouTubeUtility:
         }
         if order:
             params["order"] = order
+        if published_after:
+            params["publishedAfter"] = published_after
+        if relevance_language:
+            params["relevanceLanguage"] = relevance_language
         data = YouTubeUtility._youtube_api_get("search", params, suppress_errors=suppress_errors)
         return data.get("items", [])
 
@@ -168,8 +172,8 @@ class YouTubeUtility:
         }
 
     @staticmethod
-    def _search_recent_api(query: str, limit: int, suppress_errors: bool = False) -> List[Dict[str, Any]]:
-        search_items = YouTubeUtility._search_videos_api(query, limit, order="date", suppress_errors=suppress_errors)
+    def _search_recent_api(query: str, limit: int, published_after: Optional[str] = None, suppress_errors: bool = False) -> List[Dict[str, Any]]:
+        search_items = YouTubeUtility._search_videos_api(query, limit, order="date", published_after=published_after, relevance_language="en", suppress_errors=suppress_errors)
         video_ids = [item.get("id", {}).get("videoId") for item in search_items if item.get("id", {}).get("videoId")]
         if not video_ids:
             return []
@@ -246,14 +250,20 @@ class YouTubeUtility:
         return YouTubeUtility._run_json_command(cmd)
 
     @staticmethod
-    def _search_recent_full_metadata(query: str, limit: int) -> List[Dict[str, Any]]:
+    def _search_recent_full_metadata(query: str, limit: int, published_after: Optional["datetime"] = None) -> List[Dict[str, Any]]:
         cmd = [
             *YouTubeUtility._yt_dlp_command(),
             f"ytsearchdate{limit}:{query}",
             "--dump-json",
-            "--quiet"
+            "--quiet",
         ]
-        return YouTubeUtility._run_json_command(cmd)
+        if published_after:
+            from datetime import datetime as _dt
+            date_str = published_after.strftime("%Y%m%d") if hasattr(published_after, "strftime") else str(published_after)
+            cmd += ["--dateafter", date_str]
+        rows = YouTubeUtility._run_json_command(cmd)
+        # Post-filter for English when language metadata is available
+        return [r for r in rows if not r.get("language") or r.get("language") == "en"]
 
     @staticmethod
     def _search_flat(query: str, limit: int) -> List[Dict[str, Any]]:
@@ -316,15 +326,16 @@ class YouTubeUtility:
         return YouTubeUtility._search_flat(query, limit)
 
     @staticmethod
-    def search_recent(query: str, limit: int, logger=None) -> List[Dict[str, Any]]:
+    def search_recent(query: str, limit: int, logger=None, published_after=None) -> List[Dict[str, Any]]:
         if logger:
             logger(f"[*] Searching recent videos for '{query}' (limit: {limit})...")
         else:
             print(f"[*] Searching recent videos for '{query}' (limit: {limit})...")
-        api_rows = YouTubeUtility._search_recent_api(query, limit, suppress_errors=True)
+        published_after_iso = published_after.strftime("%Y-%m-%dT%H:%M:%SZ") if published_after else None
+        api_rows = YouTubeUtility._search_recent_api(query, limit, published_after=published_after_iso, suppress_errors=True)
         if api_rows:
             return api_rows
-        return YouTubeUtility._search_recent_full_metadata(query, limit)
+        return YouTubeUtility._search_recent_full_metadata(query, limit, published_after=published_after)
 
     @staticmethod
     def get_channel_info(channel_url: str) -> Dict[str, Any]:
