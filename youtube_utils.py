@@ -132,20 +132,38 @@ class YouTubeUtility:
         if not YouTubeUtility._youtube_api_enabled():
             return []
 
-        params: Dict[str, Any] = {
-            "part": "snippet",
-            "q": query,
-            "type": "video",
-            "maxResults": min(limit, 50),
-        }
-        if order:
-            params["order"] = order
-        if published_after:
-            params["publishedAfter"] = published_after
-        if relevance_language:
-            params["relevanceLanguage"] = relevance_language
-        data = YouTubeUtility._youtube_api_get("search", params, suppress_errors=suppress_errors)
-        return data.get("items", [])
+        remaining = max(int(limit or 0), 0)
+        items: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
+
+        while remaining > 0:
+            params: Dict[str, Any] = {
+                "part": "snippet",
+                "q": query,
+                "type": "video",
+                "maxResults": min(remaining, 50),
+            }
+            if order:
+                params["order"] = order
+            if published_after:
+                params["publishedAfter"] = published_after
+            if relevance_language:
+                params["relevanceLanguage"] = relevance_language
+            if page_token:
+                params["pageToken"] = page_token
+
+            data = YouTubeUtility._youtube_api_get("search", params, suppress_errors=suppress_errors)
+            batch = data.get("items", [])
+            if not batch:
+                break
+
+            items.extend(batch)
+            remaining = max(limit - len(items), 0)
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+
+        return items[:limit]
 
     @staticmethod
     def _video_from_api_item(item: Dict[str, Any], channel_lookup: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:

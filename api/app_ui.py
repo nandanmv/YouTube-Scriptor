@@ -964,11 +964,13 @@ def render_app_ui() -> str:
     function renderTrendResult(result) {
       const terms = result?.terms || [];
       if (!terms.length) {
-        return '<p class="meta">No AI trend terms were ranked from the recent video sample.</p>';
+        return result?.custom_seed_mode
+          ? '<p class="meta">No qualifying videos were found for the requested terms in this lookback window.</p>'
+          : '<p class="meta">No AI trend terms were ranked from the recent video sample.</p>';
       }
       return `
         <div class="cards">
-          <div class="meta">Videos analyzed: ${formatNumber(result.videos_analyzed || 0)} | Unique channels: ${formatNumber(result.unique_channels || 0)}</div>
+          <div class="meta">${result?.custom_seed_mode ? "Qualified videos analyzed" : "Videos analyzed"}: ${formatNumber(result.videos_analyzed || 0)} | Unique channels: ${formatNumber(result.unique_channels || 0)}</div>
           ${terms.map((item) => `
             <div class="card">
               <span class="tag">${escapeHtml(item.momentum || "trend")} · ${escapeHtml(String(item.trend_score || 0))}</span>
@@ -1019,7 +1021,8 @@ def render_app_ui() -> str:
         if (data.status === "completed") {
           stopTrendPolling();
           state.activeTrendJobId = null;
-          setStatus("trend-status", `Trend discovery ranked ${(data.result?.terms || []).length} AI term(s).`);
+          const termLabel = data.result?.custom_seed_mode ? "requested term(s)" : "AI term(s)";
+          setStatus("trend-status", `Trend discovery ranked ${(data.result?.terms || []).length} ${termLabel}.`);
           setOutputHtml("trend-output", renderTrendResult(data.result || {}));
           return;
         }

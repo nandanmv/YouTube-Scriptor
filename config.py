@@ -60,6 +60,12 @@ MAX_SCRIPT_DURATION = int(os.getenv("MAX_SCRIPT_DURATION", "12"))  # Maximum dur
 # Auto Research Settings
 AUTO_RESEARCH_OUTLIER_COUNT = int(os.getenv("AUTO_RESEARCH_OUTLIER_COUNT", "10"))  # Number of top outliers to analyze automatically
 
+# Trend Discovery Settings
+TREND_SEARCH_POOL_MULTIPLIER = int(os.getenv("TREND_SEARCH_POOL_MULTIPLIER", "4"))
+TREND_MAX_SEARCH_POOL = int(os.getenv("TREND_MAX_SEARCH_POOL", "100"))
+TREND_MIN_VIEWS = int(os.getenv("TREND_MIN_VIEWS", "500"))
+TREND_MIN_VIEWS_PER_DAY = int(os.getenv("TREND_MIN_VIEWS_PER_DAY", "50"))
+
 # Web App Authentication
 APP_LOGIN_PASSWORD = os.getenv("APP_LOGIN_PASSWORD", "").strip()
 APP_SESSION_SECRET = os.getenv("APP_SESSION_SECRET", APP_LOGIN_PASSWORD).strip()
