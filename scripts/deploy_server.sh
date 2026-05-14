@@ -55,8 +55,13 @@ if [ -n "\$(git status --short)" ]; then
   fi
 fi
 git pull --ff-only origin "$BRANCH"
-pkill -f "main.py serve --host $APP_HOST --port $APP_PORT" || true
+echo "Server commit: \$(git rev-parse --short HEAD)"
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k "$APP_PORT"/tcp || true
+fi
+pkill -f "python3.10 main.py serve" || true
 pkill -f "uvicorn.*$APP_PORT" || true
+sleep 2
 nohup python3.10 main.py serve --host "$APP_HOST" --port "$APP_PORT" > "$APP_LOG" 2>&1 &
 for _ in {1..20}; do
   if curl -fsS "http://$APP_HOST:$APP_PORT/health" >/dev/null; then
