@@ -15,6 +15,7 @@ APP_LOG="${APP_LOG:-nohup.out}"
 BRANCH="${BRANCH:-master}"
 AUTO_COMMIT="${AUTO_COMMIT:-0}"
 COMMIT_MESSAGE="${COMMIT_MESSAGE:-Deploy commit}"
+SERVER_STASH="${SERVER_STASH:-0}"
 
 cd "$ROOT_DIR"
 
@@ -43,6 +44,16 @@ git push origin "HEAD:$BRANCH"
 REMOTE_CMD=$(cat <<EOF
 set -euo pipefail
 cd "$REMOTE_REPO_PATH"
+if [ -n "\$(git status --short)" ]; then
+  echo "Server repo has local changes:"
+  git status --short
+  if [ "$SERVER_STASH" = "1" ]; then
+    git stash push -u -m "auto-stash before deploy"
+  else
+    echo "Set SERVER_STASH=1 to auto-stash server changes before pull."
+    exit 1
+  fi
+fi
 git pull --ff-only origin "$BRANCH"
 pkill -f "main.py serve --host $APP_HOST --port $APP_PORT" || true
 pkill -f "uvicorn.*$APP_PORT" || true
